@@ -1,0 +1,30 @@
+{
+  "mode": "ultra",
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "inAmount": "10000000",
+  "outAmount": "2500000",
+  "inUsdValue": 1.50,
+  "outUsdValue": 1.46,
+  "swapUsdValue": 1.46,
+  "otherAmountThreshold": "2400000",
+  "swapMode": "ExactIn",
+  "slippageBps": 40,
+  "priceImpact": 0.012,
+  "routePlan": [],
+  "router": "metis",
+  "transaction": "AQIDBA==",
+  "requestId": "order-request-1",
+  "gasless": false,
+  "feeBps": 50,
+  "feeMint": "TokenMint11111111111111111111111111111111111",
+  "platformFee": {
+    "amount": "12500",
+    "feeBps": 50
+  },
+  "signatureFeeLamports": 5000,
+  "prioritizationFeeLamports": 12000,
+  "rentFeeLamports": 0,
+  "swapType": "aggregator",
+  "totalTime": 284,
+  "taker": "Wallet11111111111111111111111111111111111111"
+}

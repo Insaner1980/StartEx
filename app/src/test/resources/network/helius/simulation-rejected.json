@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 420000003 },
+    "value": {
+      "err": { "InstructionError": [0, "InsufficientFunds"] },
+      "logs": ["Transfer: insufficient lamports"],
+      "accounts": null,
+      "unitsConsumed": 150
+    }
+  },
+  "id": 1
+}

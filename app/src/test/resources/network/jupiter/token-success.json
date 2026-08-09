@@ -1,0 +1,44 @@
+[
+  {
+    "id": "Mint333333333333333333333333333333333333333",
+    "name": "Fixture Token",
+    "symbol": "FIX",
+    "decimals": 6,
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "createdAt": "2026-08-09T11:54:00Z",
+    "dev": "Creator333333333333333333333333333333333333",
+    "holderCount": 420,
+    "mcap": 125000.0,
+    "usdPrice": 0.0042,
+    "priceBlockId": 420000001,
+    "liquidity": 28000.0,
+    "stats5m": {
+      "priceChange": 2.4,
+      "holderChange": 1.2,
+      "liquidityChange": 0.8,
+      "volumeChange": 4.5,
+      "buyVolume": 2200.0,
+      "sellVolume": 1800.0,
+      "buyOrganicVolume": 1500.0,
+      "sellOrganicVolume": 1200.0,
+      "numBuys": 82,
+      "numSells": 61,
+      "numTraders": 74,
+      "numOrganicBuyers": 48,
+      "numNetBuyers": 21
+    },
+    "audit": {
+      "isSus": false,
+      "mintAuthorityDisabled": true,
+      "freezeAuthorityDisabled": true,
+      "topHoldersPercentage": 19.5,
+      "devBalancePercentage": 2.1,
+      "devMints": 1
+    },
+    "organicScore": 72.5,
+    "organicScoreLabel": "high",
+    "isVerified": false,
+    "tags": ["community"],
+    "updatedAt": "2026-08-09T11:59:30Z"
+  }
+]

@@ -1,0 +1,2001 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "92e1f59803028927636b8e360f4ae2aa",
+    "entities": [
+      {
+        "tableName": "wallet_profiles",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER NOT NULL, `publicAddress` TEXT NOT NULL, `derivationPath` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, `backupConfirmedAtMillis` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "publicAddress",
+            "columnName": "publicAddress",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "derivationPath",
+            "columnName": "derivationPath",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtMillis",
+            "columnName": "createdAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "backupConfirmedAtMillis",
+            "columnName": "backupConfirmedAtMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_wallet_profiles_publicAddress",
+            "unique": true,
+            "columnNames": [
+              "publicAddress"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_wallet_profiles_publicAddress` ON `${TABLE_NAME}` (`publicAddress`)"
+          }
+        ]
+      },
+      {
+        "tableName": "wallet_secret_envelopes",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`walletProfileId` INTEGER NOT NULL, `encryptedSecret` BLOB NOT NULL, `secretIv` BLOB NOT NULL, `secretEnvelopeVersion` INTEGER NOT NULL, `keystoreAccessMode` TEXT NOT NULL, `updatedAtMillis` INTEGER NOT NULL, PRIMARY KEY(`walletProfileId`), FOREIGN KEY(`walletProfileId`) REFERENCES `wallet_profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "walletProfileId",
+            "columnName": "walletProfileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encryptedSecret",
+            "columnName": "encryptedSecret",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "secretIv",
+            "columnName": "secretIv",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "secretEnvelopeVersion",
+            "columnName": "secretEnvelopeVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keystoreAccessMode",
+            "columnName": "keystoreAccessMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtMillis",
+            "columnName": "updatedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "walletProfileId"
+          ]
+        },
+        "foreignKeys": [
+          {
+            "table": "wallet_profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "walletProfileId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "provider_credentials",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`providerId` TEXT NOT NULL, `encryptedApiKey` BLOB NOT NULL, `apiKeyIv` BLOB NOT NULL, `secretEnvelopeVersion` INTEGER NOT NULL, `keystoreAccessMode` TEXT NOT NULL, `updatedAtMillis` INTEGER NOT NULL, PRIMARY KEY(`providerId`))",
+        "fields": [
+          {
+            "fieldPath": "providerId",
+            "columnName": "providerId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encryptedApiKey",
+            "columnName": "encryptedApiKey",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "apiKeyIv",
+            "columnName": "apiKeyIv",
+            "affinity": "BLOB",
+            "notNull": true
+          },
+          {
+            "fieldPath": "secretEnvelopeVersion",
+            "columnName": "secretEnvelopeVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keystoreAccessMode",
+            "columnName": "keystoreAccessMode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtMillis",
+            "columnName": "updatedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "providerId"
+          ]
+        }
+      },
+      {
+        "tableName": "trusted_addresses",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `walletProfileId` INTEGER NOT NULL, `label` TEXT NOT NULL, `address` TEXT NOT NULL, `accountKind` TEXT, `createdAtMillis` INTEGER NOT NULL, `lastVerifiedAtMillis` INTEGER, `isLocked` INTEGER NOT NULL DEFAULT 0, `firstTransferVerifiedAtMillis` INTEGER, FOREIGN KEY(`walletProfileId`) REFERENCES `wallet_profiles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "walletProfileId",
+            "columnName": "walletProfileId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "label",
+            "columnName": "label",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "address",
+            "columnName": "address",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "accountKind",
+            "columnName": "accountKind",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAtMillis",
+            "columnName": "createdAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastVerifiedAtMillis",
+            "columnName": "lastVerifiedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isLocked",
+            "columnName": "isLocked",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          },
+          {
+            "fieldPath": "firstTransferVerifiedAtMillis",
+            "columnName": "firstTransferVerifiedAtMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_trusted_addresses_walletProfileId",
+            "unique": false,
+            "columnNames": [
+              "walletProfileId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trusted_addresses_walletProfileId` ON `${TABLE_NAME}` (`walletProfileId`)"
+          },
+          {
+            "name": "index_trusted_addresses_address",
+            "unique": true,
+            "columnNames": [
+              "address"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_trusted_addresses_address` ON `${TABLE_NAME}` (`address`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "wallet_profiles",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "walletProfileId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "strategy_configs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`version` INTEGER NOT NULL, `minimumEntryScore` INTEGER NOT NULL, `minimumObservationMillis` INTEGER NOT NULL, `maximumCandidateAgeMillis` INTEGER NOT NULL, `minimumLiquidityLamports` INTEGER NOT NULL, `minimumSellOutputLamports` INTEGER NOT NULL, `requiredSnapshotCount` INTEGER NOT NULL, `takeProfitBps` INTEGER NOT NULL, `hardStopLossBps` INTEGER NOT NULL, `trailingActivationBps` INTEGER NOT NULL, `trailingDistanceBps` INTEGER NOT NULL, `minimumExitSafetyScore` INTEGER NOT NULL, `weightsJson` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, PRIMARY KEY(`version`))",
+        "fields": [
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumEntryScore",
+            "columnName": "minimumEntryScore",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumObservationMillis",
+            "columnName": "minimumObservationMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumCandidateAgeMillis",
+            "columnName": "maximumCandidateAgeMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumLiquidityLamports",
+            "columnName": "minimumLiquidityLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumSellOutputLamports",
+            "columnName": "minimumSellOutputLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requiredSnapshotCount",
+            "columnName": "requiredSnapshotCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "takeProfitBps",
+            "columnName": "takeProfitBps",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hardStopLossBps",
+            "columnName": "hardStopLossBps",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trailingActivationBps",
+            "columnName": "trailingActivationBps",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "trailingDistanceBps",
+            "columnName": "trailingDistanceBps",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumExitSafetyScore",
+            "columnName": "minimumExitSafetyScore",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "weightsJson",
+            "columnName": "weightsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtMillis",
+            "columnName": "createdAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "version"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_strategy_configs_createdAtMillis",
+            "unique": false,
+            "columnNames": [
+              "createdAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_strategy_configs_createdAtMillis` ON `${TABLE_NAME}` (`createdAtMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "risk_configs",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`version` INTEGER NOT NULL, `maximumTradeLamports` INTEGER NOT NULL, `maximumTradeEurCents` INTEGER NOT NULL, `maximumExposureLamports` INTEGER NOT NULL, `maximumOpenPositions` INTEGER NOT NULL, `maximumTradesPerDay` INTEGER NOT NULL, `maximumDailyLossLamports` INTEGER NOT NULL, `maximumDailyFeesLamports` INTEGER NOT NULL, `maximumConsecutiveLosses` INTEGER NOT NULL, `lossCooldownMillis` INTEGER NOT NULL, `failedTransactionCooldownMillis` INTEGER NOT NULL, `minimumWalletReserveLamports` INTEGER NOT NULL, `maximumSlippageBps` INTEGER NOT NULL, `maximumPriorityFeeLamports` INTEGER NOT NULL, `maximumTransactionCostLamports` INTEGER NOT NULL, `maximumFeePercentBps` INTEGER NOT NULL, `maximumHoldingMillis` INTEGER NOT NULL, `maximumCandidateAgeMillis` INTEGER NOT NULL, `maximumPreEntryPriceIncreaseBps` INTEGER NOT NULL, `minimumDataFreshnessMillis` INTEGER NOT NULL, `minimumProviderHealth` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, PRIMARY KEY(`version`))",
+        "fields": [
+          {
+            "fieldPath": "version",
+            "columnName": "version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumTradeLamports",
+            "columnName": "maximumTradeLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumTradeEurCents",
+            "columnName": "maximumTradeEurCents",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumExposureLamports",
+            "columnName": "maximumExposureLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumOpenPositions",
+            "columnName": "maximumOpenPositions",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumTradesPerDay",
+            "columnName": "maximumTradesPerDay",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumDailyLossLamports",
+            "columnName": "maximumDailyLossLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumDailyFeesLamports",
+            "columnName": "maximumDailyFeesLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumConsecutiveLosses",
+            "columnName": "maximumConsecutiveLosses",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lossCooldownMillis",
+            "columnName": "lossCooldownMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "failedTransactionCooldownMillis",
+            "columnName": "failedTransactionCooldownMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumWalletReserveLamports",
+            "columnName": "minimumWalletReserveLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumSlippageBps",
+            "columnName": "maximumSlippageBps",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumPriorityFeeLamports",
+            "columnName": "maximumPriorityFeeLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumTransactionCostLamports",
+            "columnName": "maximumTransactionCostLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumFeePercentBps",
+            "columnName": "maximumFeePercentBps",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumHoldingMillis",
+            "columnName": "maximumHoldingMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumCandidateAgeMillis",
+            "columnName": "maximumCandidateAgeMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumPreEntryPriceIncreaseBps",
+            "columnName": "maximumPreEntryPriceIncreaseBps",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumDataFreshnessMillis",
+            "columnName": "minimumDataFreshnessMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "minimumProviderHealth",
+            "columnName": "minimumProviderHealth",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtMillis",
+            "columnName": "createdAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "version"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_risk_configs_createdAtMillis",
+            "unique": false,
+            "columnNames": [
+              "createdAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_risk_configs_createdAtMillis` ON `${TABLE_NAME}` (`createdAtMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "bot_sessions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `mode` TEXT NOT NULL, `status` TEXT NOT NULL, `strategyVersion` INTEGER NOT NULL, `riskVersion` INTEGER NOT NULL, `startedAtMillis` INTEGER NOT NULL, `stoppedAtMillis` INTEGER, `stopReason` TEXT, `lastHeartbeatAtMillis` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`id`), FOREIGN KEY(`strategyVersion`) REFERENCES `strategy_configs`(`version`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`riskVersion`) REFERENCES `risk_configs`(`version`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "strategyVersion",
+            "columnName": "strategyVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "riskVersion",
+            "columnName": "riskVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startedAtMillis",
+            "columnName": "startedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stoppedAtMillis",
+            "columnName": "stoppedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "stopReason",
+            "columnName": "stopReason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastHeartbeatAtMillis",
+            "columnName": "lastHeartbeatAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true,
+            "defaultValue": "0"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_bot_sessions_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bot_sessions_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_bot_sessions_startedAtMillis",
+            "unique": false,
+            "columnNames": [
+              "startedAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bot_sessions_startedAtMillis` ON `${TABLE_NAME}` (`startedAtMillis`)"
+          },
+          {
+            "name": "index_bot_sessions_strategyVersion",
+            "unique": false,
+            "columnNames": [
+              "strategyVersion"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bot_sessions_strategyVersion` ON `${TABLE_NAME}` (`strategyVersion`)"
+          },
+          {
+            "name": "index_bot_sessions_riskVersion",
+            "unique": false,
+            "columnNames": [
+              "riskVersion"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_bot_sessions_riskVersion` ON `${TABLE_NAME}` (`riskVersion`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "strategy_configs",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "strategyVersion"
+            ],
+            "referencedColumns": [
+              "version"
+            ]
+          },
+          {
+            "table": "risk_configs",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "riskVersion"
+            ],
+            "referencedColumns": [
+              "version"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "token_candidates",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`mint` TEXT NOT NULL, `source` TEXT NOT NULL, `discoverySignature` TEXT NOT NULL, `creatorAddress` TEXT, `name` TEXT, `symbol` TEXT, `metadataUri` TEXT, `tokenProgram` TEXT, `state` TEXT NOT NULL, `score` INTEGER, `rejectionCode` TEXT, `discoveredAtMillis` INTEGER NOT NULL, `lastUpdatedAtMillis` INTEGER NOT NULL, PRIMARY KEY(`mint`))",
+        "fields": [
+          {
+            "fieldPath": "mint",
+            "columnName": "mint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "discoverySignature",
+            "columnName": "discoverySignature",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "creatorAddress",
+            "columnName": "creatorAddress",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "symbol",
+            "columnName": "symbol",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "metadataUri",
+            "columnName": "metadataUri",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "tokenProgram",
+            "columnName": "tokenProgram",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "score",
+            "columnName": "score",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "rejectionCode",
+            "columnName": "rejectionCode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "discoveredAtMillis",
+            "columnName": "discoveredAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastUpdatedAtMillis",
+            "columnName": "lastUpdatedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "mint"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_token_candidates_state",
+            "unique": false,
+            "columnNames": [
+              "state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_token_candidates_state` ON `${TABLE_NAME}` (`state`)"
+          },
+          {
+            "name": "index_token_candidates_discoveredAtMillis",
+            "unique": false,
+            "columnNames": [
+              "discoveredAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_token_candidates_discoveredAtMillis` ON `${TABLE_NAME}` (`discoveredAtMillis`)"
+          },
+          {
+            "name": "index_token_candidates_lastUpdatedAtMillis",
+            "unique": false,
+            "columnNames": [
+              "lastUpdatedAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_token_candidates_lastUpdatedAtMillis` ON `${TABLE_NAME}` (`lastUpdatedAtMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "token_snapshots",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `candidateMint` TEXT NOT NULL, `capturedAtMillis` INTEGER NOT NULL, `slot` INTEGER, `liquidityLamports` INTEGER, `marketCapLamports` INTEGER, `executableBuyLamports` INTEGER, `executableSellLamports` INTEGER, `holderCount` INTEGER, `topHolderShareBps` INTEGER, `routeAvailable` INTEGER NOT NULL, `source` TEXT NOT NULL, FOREIGN KEY(`candidateMint`) REFERENCES `token_candidates`(`mint`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "candidateMint",
+            "columnName": "candidateMint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "capturedAtMillis",
+            "columnName": "capturedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "slot",
+            "columnName": "slot",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "liquidityLamports",
+            "columnName": "liquidityLamports",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "marketCapLamports",
+            "columnName": "marketCapLamports",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "executableBuyLamports",
+            "columnName": "executableBuyLamports",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "executableSellLamports",
+            "columnName": "executableSellLamports",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "holderCount",
+            "columnName": "holderCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "topHolderShareBps",
+            "columnName": "topHolderShareBps",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "routeAvailable",
+            "columnName": "routeAvailable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "source",
+            "columnName": "source",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_token_snapshots_candidateMint",
+            "unique": false,
+            "columnNames": [
+              "candidateMint"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_token_snapshots_candidateMint` ON `${TABLE_NAME}` (`candidateMint`)"
+          },
+          {
+            "name": "index_token_snapshots_capturedAtMillis",
+            "unique": false,
+            "columnNames": [
+              "capturedAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_token_snapshots_capturedAtMillis` ON `${TABLE_NAME}` (`capturedAtMillis`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "token_candidates",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "candidateMint"
+            ],
+            "referencedColumns": [
+              "mint"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "decisions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `candidateMint` TEXT NOT NULL, `strategyVersion` INTEGER NOT NULL, `riskVersion` INTEGER NOT NULL, `action` TEXT NOT NULL, `score` INTEGER NOT NULL, `factorsJson` TEXT NOT NULL, `rejectionCodesJson` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `bot_sessions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`candidateMint`) REFERENCES `token_candidates`(`mint`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`strategyVersion`) REFERENCES `strategy_configs`(`version`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`riskVersion`) REFERENCES `risk_configs`(`version`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "candidateMint",
+            "columnName": "candidateMint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "strategyVersion",
+            "columnName": "strategyVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "riskVersion",
+            "columnName": "riskVersion",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "action",
+            "columnName": "action",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "score",
+            "columnName": "score",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "factorsJson",
+            "columnName": "factorsJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rejectionCodesJson",
+            "columnName": "rejectionCodesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtMillis",
+            "columnName": "createdAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_decisions_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_decisions_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          },
+          {
+            "name": "index_decisions_candidateMint",
+            "unique": false,
+            "columnNames": [
+              "candidateMint"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_decisions_candidateMint` ON `${TABLE_NAME}` (`candidateMint`)"
+          },
+          {
+            "name": "index_decisions_strategyVersion",
+            "unique": false,
+            "columnNames": [
+              "strategyVersion"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_decisions_strategyVersion` ON `${TABLE_NAME}` (`strategyVersion`)"
+          },
+          {
+            "name": "index_decisions_riskVersion",
+            "unique": false,
+            "columnNames": [
+              "riskVersion"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_decisions_riskVersion` ON `${TABLE_NAME}` (`riskVersion`)"
+          },
+          {
+            "name": "index_decisions_createdAtMillis",
+            "unique": false,
+            "columnNames": [
+              "createdAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_decisions_createdAtMillis` ON `${TABLE_NAME}` (`createdAtMillis`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "bot_sessions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "token_candidates",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "candidateMint"
+            ],
+            "referencedColumns": [
+              "mint"
+            ]
+          },
+          {
+            "table": "strategy_configs",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "strategyVersion"
+            ],
+            "referencedColumns": [
+              "version"
+            ]
+          },
+          {
+            "table": "risk_configs",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "riskVersion"
+            ],
+            "referencedColumns": [
+              "version"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "positions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `mint` TEXT NOT NULL, `entryDecisionId` TEXT NOT NULL, `status` TEXT NOT NULL, `tokenAmountAtomic` TEXT NOT NULL, `grossInputLamports` INTEGER NOT NULL, `netInputLamports` INTEGER NOT NULL, `latestSellQuoteLamports` INTEGER, `entrySignature` TEXT, `exitSignature` TEXT, `openedAtMillis` INTEGER NOT NULL, `updatedAtMillis` INTEGER NOT NULL, `closedAtMillis` INTEGER, `exitReason` TEXT, `mode` TEXT NOT NULL, `symbol` TEXT NOT NULL, `name` TEXT NOT NULL, `tokenDecimals` INTEGER NOT NULL, `tokenProgram` TEXT NOT NULL, `entryCostLamports` INTEGER NOT NULL, `exitRulesVersion` TEXT NOT NULL, `exitRulesJson` TEXT NOT NULL, `latestSellQuoteAtMillis` INTEGER, `highestExecutableSellLamports` INTEGER NOT NULL, `lowestExecutableSellLamports` INTEGER NOT NULL, `routeAvailable` INTEGER NOT NULL, `reconciliationState` TEXT NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `bot_sessions`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`mint`) REFERENCES `token_candidates`(`mint`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`entryDecisionId`) REFERENCES `decisions`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mint",
+            "columnName": "mint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entryDecisionId",
+            "columnName": "entryDecisionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tokenAmountAtomic",
+            "columnName": "tokenAmountAtomic",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "grossInputLamports",
+            "columnName": "grossInputLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "netInputLamports",
+            "columnName": "netInputLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latestSellQuoteLamports",
+            "columnName": "latestSellQuoteLamports",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "entrySignature",
+            "columnName": "entrySignature",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "exitSignature",
+            "columnName": "exitSignature",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "openedAtMillis",
+            "columnName": "openedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtMillis",
+            "columnName": "updatedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "closedAtMillis",
+            "columnName": "closedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "exitReason",
+            "columnName": "exitReason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "symbol",
+            "columnName": "symbol",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tokenDecimals",
+            "columnName": "tokenDecimals",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tokenProgram",
+            "columnName": "tokenProgram",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entryCostLamports",
+            "columnName": "entryCostLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exitRulesVersion",
+            "columnName": "exitRulesVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exitRulesJson",
+            "columnName": "exitRulesJson",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "latestSellQuoteAtMillis",
+            "columnName": "latestSellQuoteAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "highestExecutableSellLamports",
+            "columnName": "highestExecutableSellLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lowestExecutableSellLamports",
+            "columnName": "lowestExecutableSellLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "routeAvailable",
+            "columnName": "routeAvailable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "reconciliationState",
+            "columnName": "reconciliationState",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_positions_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_positions_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          },
+          {
+            "name": "index_positions_mint",
+            "unique": false,
+            "columnNames": [
+              "mint"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_positions_mint` ON `${TABLE_NAME}` (`mint`)"
+          },
+          {
+            "name": "index_positions_entryDecisionId",
+            "unique": false,
+            "columnNames": [
+              "entryDecisionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_positions_entryDecisionId` ON `${TABLE_NAME}` (`entryDecisionId`)"
+          },
+          {
+            "name": "index_positions_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_positions_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_positions_openedAtMillis",
+            "unique": false,
+            "columnNames": [
+              "openedAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_positions_openedAtMillis` ON `${TABLE_NAME}` (`openedAtMillis`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "bot_sessions",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "token_candidates",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "mint"
+            ],
+            "referencedColumns": [
+              "mint"
+            ]
+          },
+          {
+            "table": "decisions",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "entryDecisionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "trade_intents",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `sessionId` TEXT NOT NULL, `positionId` TEXT, `idempotencyKey` TEXT NOT NULL, `side` TEXT NOT NULL, `mint` TEXT NOT NULL, `requestedInputAtomic` TEXT NOT NULL, `expectedOutputAtomic` TEXT NOT NULL, `maximumCostLamports` INTEGER NOT NULL, `paperFeeLamports` INTEGER NOT NULL, `providerRequestId` TEXT, `status` TEXT NOT NULL, `createdAtMillis` INTEGER NOT NULL, `updatedAtMillis` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`sessionId`) REFERENCES `bot_sessions`(`id`) ON UPDATE NO ACTION ON DELETE RESTRICT , FOREIGN KEY(`positionId`) REFERENCES `positions`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionId",
+            "columnName": "sessionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "positionId",
+            "columnName": "positionId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "idempotencyKey",
+            "columnName": "idempotencyKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "side",
+            "columnName": "side",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mint",
+            "columnName": "mint",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requestedInputAtomic",
+            "columnName": "requestedInputAtomic",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expectedOutputAtomic",
+            "columnName": "expectedOutputAtomic",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "maximumCostLamports",
+            "columnName": "maximumCostLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "paperFeeLamports",
+            "columnName": "paperFeeLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "providerRequestId",
+            "columnName": "providerRequestId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAtMillis",
+            "columnName": "createdAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtMillis",
+            "columnName": "updatedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_trade_intents_sessionId",
+            "unique": false,
+            "columnNames": [
+              "sessionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trade_intents_sessionId` ON `${TABLE_NAME}` (`sessionId`)"
+          },
+          {
+            "name": "index_trade_intents_positionId",
+            "unique": false,
+            "columnNames": [
+              "positionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trade_intents_positionId` ON `${TABLE_NAME}` (`positionId`)"
+          },
+          {
+            "name": "index_trade_intents_mint",
+            "unique": false,
+            "columnNames": [
+              "mint"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trade_intents_mint` ON `${TABLE_NAME}` (`mint`)"
+          },
+          {
+            "name": "index_trade_intents_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trade_intents_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_trade_intents_createdAtMillis",
+            "unique": false,
+            "columnNames": [
+              "createdAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_trade_intents_createdAtMillis` ON `${TABLE_NAME}` (`createdAtMillis`)"
+          },
+          {
+            "name": "index_trade_intents_idempotencyKey",
+            "unique": true,
+            "columnNames": [
+              "idempotencyKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_trade_intents_idempotencyKey` ON `${TABLE_NAME}` (`idempotencyKey`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "bot_sessions",
+            "onDelete": "RESTRICT",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "sessionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          },
+          {
+            "table": "positions",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "positionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "blockchain_transactions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `intentId` TEXT, `idempotencyKey` TEXT NOT NULL, `signature` TEXT, `serializedHash` TEXT NOT NULL, `status` TEXT NOT NULL, `slot` INTEGER, `actualInputAtomic` TEXT, `actualOutputAtomic` TEXT, `router` TEXT, `validatorVersion` TEXT NOT NULL, `validatorResult` TEXT NOT NULL, `lastValidBlockHeight` INTEGER, `expiresAtMillis` INTEGER, `submittedAtMillis` INTEGER NOT NULL, `confirmedAtMillis` INTEGER, `failureCode` TEXT, PRIMARY KEY(`id`), FOREIGN KEY(`intentId`) REFERENCES `trade_intents`(`id`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "intentId",
+            "columnName": "intentId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "idempotencyKey",
+            "columnName": "idempotencyKey",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "signature",
+            "columnName": "signature",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "serializedHash",
+            "columnName": "serializedHash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "slot",
+            "columnName": "slot",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "actualInputAtomic",
+            "columnName": "actualInputAtomic",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "actualOutputAtomic",
+            "columnName": "actualOutputAtomic",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "router",
+            "columnName": "router",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "validatorVersion",
+            "columnName": "validatorVersion",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "validatorResult",
+            "columnName": "validatorResult",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastValidBlockHeight",
+            "columnName": "lastValidBlockHeight",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "expiresAtMillis",
+            "columnName": "expiresAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "submittedAtMillis",
+            "columnName": "submittedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "confirmedAtMillis",
+            "columnName": "confirmedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "failureCode",
+            "columnName": "failureCode",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_blockchain_transactions_intentId",
+            "unique": false,
+            "columnNames": [
+              "intentId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_blockchain_transactions_intentId` ON `${TABLE_NAME}` (`intentId`)"
+          },
+          {
+            "name": "index_blockchain_transactions_idempotencyKey",
+            "unique": false,
+            "columnNames": [
+              "idempotencyKey"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_blockchain_transactions_idempotencyKey` ON `${TABLE_NAME}` (`idempotencyKey`)"
+          },
+          {
+            "name": "index_blockchain_transactions_signature",
+            "unique": true,
+            "columnNames": [
+              "signature"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_blockchain_transactions_signature` ON `${TABLE_NAME}` (`signature`)"
+          },
+          {
+            "name": "index_blockchain_transactions_serializedHash",
+            "unique": true,
+            "columnNames": [
+              "serializedHash"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_blockchain_transactions_serializedHash` ON `${TABLE_NAME}` (`serializedHash`)"
+          },
+          {
+            "name": "index_blockchain_transactions_status",
+            "unique": false,
+            "columnNames": [
+              "status"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_blockchain_transactions_status` ON `${TABLE_NAME}` (`status`)"
+          },
+          {
+            "name": "index_blockchain_transactions_submittedAtMillis",
+            "unique": false,
+            "columnNames": [
+              "submittedAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_blockchain_transactions_submittedAtMillis` ON `${TABLE_NAME}` (`submittedAtMillis`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "trade_intents",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "intentId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "fee_records",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `transactionId` TEXT NOT NULL, `feeType` TEXT NOT NULL, `mint` TEXT, `amountAtomic` TEXT NOT NULL, `lamportsEquivalent` INTEGER, `recordedAtMillis` INTEGER NOT NULL, PRIMARY KEY(`id`), FOREIGN KEY(`transactionId`) REFERENCES `blockchain_transactions`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "transactionId",
+            "columnName": "transactionId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "feeType",
+            "columnName": "feeType",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mint",
+            "columnName": "mint",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "amountAtomic",
+            "columnName": "amountAtomic",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lamportsEquivalent",
+            "columnName": "lamportsEquivalent",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "recordedAtMillis",
+            "columnName": "recordedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_fee_records_transactionId",
+            "unique": false,
+            "columnNames": [
+              "transactionId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fee_records_transactionId` ON `${TABLE_NAME}` (`transactionId`)"
+          },
+          {
+            "name": "index_fee_records_recordedAtMillis",
+            "unique": false,
+            "columnNames": [
+              "recordedAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_fee_records_recordedAtMillis` ON `${TABLE_NAME}` (`recordedAtMillis`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "blockchain_transactions",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "transactionId"
+            ],
+            "referencedColumns": [
+              "id"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "daily_performance",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`epochDay` INTEGER NOT NULL, `grossPnlLamports` INTEGER NOT NULL, `netPnlLamports` INTEGER NOT NULL, `totalFeesLamports` INTEGER NOT NULL, `tradeCount` INTEGER NOT NULL, `winCount` INTEGER NOT NULL, `lossCount` INTEGER NOT NULL, `consecutiveLosses` INTEGER NOT NULL, `updatedAtMillis` INTEGER NOT NULL, `mode` TEXT NOT NULL, `lastLossAtMillis` INTEGER, `circuitBreakerReason` TEXT, `circuitBreakerActivatedAtMillis` INTEGER, `circuitBreakerResetAfterMillis` INTEGER, PRIMARY KEY(`epochDay`, `mode`))",
+        "fields": [
+          {
+            "fieldPath": "epochDay",
+            "columnName": "epochDay",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "grossPnlLamports",
+            "columnName": "grossPnlLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "netPnlLamports",
+            "columnName": "netPnlLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalFeesLamports",
+            "columnName": "totalFeesLamports",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tradeCount",
+            "columnName": "tradeCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "winCount",
+            "columnName": "winCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lossCount",
+            "columnName": "lossCount",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consecutiveLosses",
+            "columnName": "consecutiveLosses",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAtMillis",
+            "columnName": "updatedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "mode",
+            "columnName": "mode",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastLossAtMillis",
+            "columnName": "lastLossAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "circuitBreakerReason",
+            "columnName": "circuitBreakerReason",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "circuitBreakerActivatedAtMillis",
+            "columnName": "circuitBreakerActivatedAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "circuitBreakerResetAfterMillis",
+            "columnName": "circuitBreakerResetAfterMillis",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "epochDay",
+            "mode"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_daily_performance_updatedAtMillis",
+            "unique": false,
+            "columnNames": [
+              "updatedAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_daily_performance_updatedAtMillis` ON `${TABLE_NAME}` (`updatedAtMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "provider_health",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`provider` TEXT NOT NULL, `state` TEXT NOT NULL, `consecutiveFailures` INTEGER NOT NULL, `lastSuccessAtMillis` INTEGER, `lastFailureAtMillis` INTEGER, `latencyMillis` INTEGER, `retryAfterMillis` INTEGER, `lastFailureCode` TEXT, `updatedAtMillis` INTEGER NOT NULL, PRIMARY KEY(`provider`))",
+        "fields": [
+          {
+            "fieldPath": "provider",
+            "columnName": "provider",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consecutiveFailures",
+            "columnName": "consecutiveFailures",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSuccessAtMillis",
+            "columnName": "lastSuccessAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastFailureAtMillis",
+            "columnName": "lastFailureAtMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "latencyMillis",
+            "columnName": "latencyMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "retryAfterMillis",
+            "columnName": "retryAfterMillis",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lastFailureCode",
+            "columnName": "lastFailureCode",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "updatedAtMillis",
+            "columnName": "updatedAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "provider"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_provider_health_state",
+            "unique": false,
+            "columnNames": [
+              "state"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_provider_health_state` ON `${TABLE_NAME}` (`state`)"
+          },
+          {
+            "name": "index_provider_health_updatedAtMillis",
+            "unique": false,
+            "columnNames": [
+              "updatedAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_provider_health_updatedAtMillis` ON `${TABLE_NAME}` (`updatedAtMillis`)"
+          }
+        ]
+      },
+      {
+        "tableName": "app_events",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `severity` TEXT NOT NULL, `category` TEXT NOT NULL, `code` TEXT NOT NULL, `redactedMessage` TEXT, `relatedId` TEXT, `createdAtMillis` INTEGER NOT NULL)",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "severity",
+            "columnName": "severity",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "category",
+            "columnName": "category",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "code",
+            "columnName": "code",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "redactedMessage",
+            "columnName": "redactedMessage",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "relatedId",
+            "columnName": "relatedId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAtMillis",
+            "columnName": "createdAtMillis",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_app_events_severity",
+            "unique": false,
+            "columnNames": [
+              "severity"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_app_events_severity` ON `${TABLE_NAME}` (`severity`)"
+          },
+          {
+            "name": "index_app_events_category",
+            "unique": false,
+            "columnNames": [
+              "category"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_app_events_category` ON `${TABLE_NAME}` (`category`)"
+          },
+          {
+            "name": "index_app_events_createdAtMillis",
+            "unique": false,
+            "columnNames": [
+              "createdAtMillis"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_app_events_createdAtMillis` ON `${TABLE_NAME}` (`createdAtMillis`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '92e1f59803028927636b8e360f4ae2aa')"
+    ]
+  }
+}

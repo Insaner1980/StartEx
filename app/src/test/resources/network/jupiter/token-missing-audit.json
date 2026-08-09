@@ -1,0 +1,21 @@
+[
+  {
+    "id": "Mint333333333333333333333333333333333333333",
+    "name": "Fixture Token",
+    "symbol": "FIX",
+    "decimals": 6,
+    "tokenProgram": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA",
+    "holderCount": 420,
+    "liquidity": 28000.0,
+    "organicScore": 72.5,
+    "organicScoreLabel": "high",
+    "stats5m": {
+      "buyOrganicVolume": 1500.0,
+      "sellOrganicVolume": 1200.0,
+      "numBuys": 82,
+      "numSells": 61,
+      "numTraders": 74
+    },
+    "updatedAt": "2026-08-09T11:59:30Z"
+  }
+]

@@ -1,0 +1,22 @@
+{
+  "jsonrpc": "2.0",
+  "result": [
+    {
+      "blockTime": 1786233600,
+      "confirmationStatus": "finalized",
+      "err": null,
+      "memo": null,
+      "signature": "SanitizedSignatureOne",
+      "slot": 420000012
+    },
+    {
+      "blockTime": 1786233500,
+      "confirmationStatus": "confirmed",
+      "err": { "InstructionError": [0, "Custom"] },
+      "memo": "sanitized fixture",
+      "signature": "SanitizedSignatureTwo",
+      "slot": 420000009
+    }
+  ],
+  "id": 3
+}

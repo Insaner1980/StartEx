@@ -1,0 +1,15 @@
+.gradle/
+.kotlin/
+.idea/
+*.iml
+local.properties
+**/build/
+captures/
+.externalNativeBuild/
+.cxx/
+reports/
+*.jks
+*.keystore
+secrets.properties
+provider-keys.properties
+ChatGPT Image Aug 9, 2026, 02_21_09 AM.png

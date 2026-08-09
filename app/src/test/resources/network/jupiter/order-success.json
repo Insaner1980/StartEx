@@ -1,0 +1,50 @@
+{
+  "mode": "manual",
+  "inputMint": "So11111111111111111111111111111111111111112",
+  "outputMint": "TokenMint11111111111111111111111111111111111",
+  "inAmount": "10000000",
+  "outAmount": "2500000",
+  "inUsdValue": 1.50,
+  "outUsdValue": 1.46,
+  "swapUsdValue": 1.46,
+  "otherAmountThreshold": "2400000",
+  "swapMode": "ExactIn",
+  "slippageBps": 40,
+  "priceImpactPct": "0.012",
+  "routePlan": [
+    {
+      "swapInfo": {
+        "ammKey": "Amm1111111111111111111111111111111111111111",
+        "label": "Fixture AMM",
+        "inputMint": "So11111111111111111111111111111111111111112",
+        "outputMint": "TokenMint11111111111111111111111111111111111",
+        "inAmount": "10000000",
+        "outAmount": "2500000"
+      },
+      "percent": 100,
+      "bps": 10000,
+      "usdValue": 1.46
+    }
+  ],
+  "router": "metis",
+  "transaction": "AQIDBA==",
+  "lastValidBlockHeight": "420000100",
+  "requestId": "order-request-1",
+  "gasless": false,
+  "feeBps": 50,
+  "feeMint": "TokenMint11111111111111111111111111111111111",
+  "platformFee": {
+    "amount": "12500",
+    "feeBps": 50
+  },
+  "priceImpact": 0.012,
+  "signatureFeeLamports": 5000,
+  "signatureFeePayer": null,
+  "prioritizationFeeLamports": 12000,
+  "prioritizationFeePayer": null,
+  "rentFeeLamports": 0,
+  "rentFeePayer": null,
+  "swapType": "aggregator",
+  "totalTime": 284,
+  "taker": "Wallet11111111111111111111111111111111111111"
+}

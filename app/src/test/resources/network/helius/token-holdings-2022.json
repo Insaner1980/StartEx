@@ -1,0 +1,28 @@
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 420000011 },
+    "value": [
+      {
+        "pubkey": "Token2022AccountFixture11111111111111111111",
+        "account": {
+          "data": {
+            "parsed": {
+              "info": {
+                "mint": "Token2022MintFixture11111111111111111111111",
+                "tokenAmount": { "amount": "9", "decimals": 0 }
+              },
+              "type": "account"
+            },
+            "program": "spl-token-2022",
+            "space": 182
+          },
+          "executable": false,
+          "lamports": 2074080,
+          "owner": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        }
+      }
+    ]
+  },
+  "id": 2
+}

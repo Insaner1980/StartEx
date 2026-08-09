@@ -1,0 +1,3 @@
+-keepattributes *Annotation*
+-keepattributes Signature
+-keep class wallet.core.jni.** { *; }

@@ -1,0 +1,13 @@
+{
+  "signature": "4JtXn8fB6vS9qW2kLmP7rA3cD5eF1gH8iK9mN2pQ4sT6",
+  "mint": "Mint111111111111111111111111111111111111111",
+  "traderPublicKey": "Creator111111111111111111111111111111111111",
+  "txType": "create",
+  "name": "Fixture token",
+  "symbol": "FIX",
+  "uri": "https://example.invalid/metadata.json",
+  "initialBuy": 0,
+  "marketCapSol": 28.5,
+  "vSolInBondingCurve": 30,
+  "vTokensInBondingCurve": 1000000000
+}

@@ -1,0 +1,9 @@
+{
+  "status": "Failed",
+  "signature": "5KtPn1fB4vJs9JcA3DgXfNhGbp7QY2pwBzHsi6uoAxm8",
+  "code": -1000,
+  "error": "failed to land",
+  "inputAmountResult": "0",
+  "outputAmountResult": "0",
+  "swapEvents": []
+}

@@ -1,0 +1,11 @@
+{
+  "jsonrpc": "2.0",
+  "method": "signatureNotification",
+  "params": {
+    "result": {
+      "context": { "slot": 420000021 },
+      "value": { "err": null }
+    },
+    "subscription": 78
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 420000010 },
+    "value": [
+      {
+        "pubkey": "LegacyTokenAccountFixture1111111111111111111",
+        "account": {
+          "data": {
+            "parsed": {
+              "info": {
+                "mint": "LegacyMintFixture11111111111111111111111111",
+                "tokenAmount": { "amount": "1234500", "decimals": 6 }
+              },
+              "type": "account"
+            },
+            "program": "spl-token",
+            "space": 165
+          },
+          "executable": false,
+          "lamports": 2039280,
+          "owner": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        }
+      }
+    ]
+  },
+  "id": 1
+}

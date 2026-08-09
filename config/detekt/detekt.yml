@@ -1,0 +1,38 @@
+build:
+  maxIssues: 0
+
+complexity:
+  CyclomaticComplexMethod:
+    threshold: 35
+  ComplexCondition:
+    threshold: 10
+  LargeClass:
+    threshold: 2200
+  LongMethod:
+    threshold: 300
+  LongParameterList:
+    functionThreshold: 13
+    constructorThreshold: 12
+  NestedBlockDepth:
+    threshold: 8
+  TooManyFunctions:
+    thresholdInFiles: 60
+    thresholdInClasses: 75
+    thresholdInInterfaces: 20
+    thresholdInObjects: 20
+    thresholdInEnums: 20
+
+naming:
+  FunctionNaming:
+    active: false
+
+style:
+  LoopWithTooManyJumpStatements:
+    maxJumpCount: 3
+  MagicNumber:
+    active: false
+  MaxLineLength:
+    maxLineLength: 140
+  ReturnCount:
+    max: 15
+    excludeGuardClauses: true

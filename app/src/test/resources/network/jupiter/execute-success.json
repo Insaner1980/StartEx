@@ -1,0 +1,18 @@
+{
+  "status": "Success",
+  "signature": "5KtPn1fB4vJs9JcA3DgXfNhGbp7QY2pwBzHsi6uoAxm8",
+  "slot": "420000001",
+  "code": 0,
+  "totalInputAmount": "10000000",
+  "totalOutputAmount": "2500000",
+  "inputAmountResult": "10000000",
+  "outputAmountResult": "2500000",
+  "swapEvents": [
+    {
+      "inputMint": "So11111111111111111111111111111111111111112",
+      "inputAmount": "10000000",
+      "outputMint": "TokenMint11111111111111111111111111111111111",
+      "outputAmount": "2500000"
+    }
+  ]
+}

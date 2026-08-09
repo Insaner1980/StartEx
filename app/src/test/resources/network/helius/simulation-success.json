@@ -1,0 +1,13 @@
+{
+  "jsonrpc": "2.0",
+  "result": {
+    "context": { "slot": 420000002 },
+    "value": {
+      "err": null,
+      "logs": ["Program 11111111111111111111111111111111 success"],
+      "accounts": null,
+      "unitsConsumed": 150
+    }
+  },
+  "id": 1
+}
