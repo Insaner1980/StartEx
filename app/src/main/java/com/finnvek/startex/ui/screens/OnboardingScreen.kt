@@ -45,6 +45,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.progressBarRangeInfo
@@ -89,6 +90,7 @@ fun OnboardingScreen(
     onTrustedAddresses: () -> Unit,
     onRequestSecurityMode: (Boolean, Boolean, Boolean) -> Unit,
     onComplete: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var pageIndex by rememberSaveable { mutableIntStateOf(0) }
     var acknowledgedMask by rememberSaveable { mutableIntStateOf(0) }
@@ -99,7 +101,7 @@ fun OnboardingScreen(
 
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxSize()
                 .padding(horizontal = 22.dp, vertical = 18.dp)
                 .testTag("onboarding"),
@@ -320,46 +322,48 @@ private fun WalletSetupActions(
     onCreateWallet: () -> Unit,
     onRestoreWallet: () -> Unit,
 ) {
-    if (state.walletAddress != null) {
-        SetupStatusCard(
-            title = stringResource(R.string.wallet_status),
-            ready = true,
-            readyText = stringResource(R.string.wallet_configured),
-            missingText = "",
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        AddressText(state.walletAddress)
-        return
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-    ) {
-        Button(
-            onClick = onCreateWallet,
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .heightIn(min = 48.dp),
-        ) {
-            Text(stringResource(R.string.create_wallet))
+    Column {
+        if (state.walletAddress != null) {
+            SetupStatusCard(
+                title = stringResource(R.string.wallet_status),
+                ready = true,
+                readyText = stringResource(R.string.wallet_configured),
+                missingText = "",
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            AddressText(state.walletAddress)
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Button(
+                    onClick = onCreateWallet,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp),
+                ) {
+                    Text(stringResource(R.string.create_wallet))
+                }
+                OutlinedButton(
+                    onClick = onRestoreWallet,
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .heightIn(min = 48.dp),
+                ) {
+                    Text(stringResource(R.string.restore_wallet))
+                }
+            }
+            Text(
+                text = stringResource(R.string.wallet_setup_can_continue),
+                style = MaterialTheme.typography.bodySmall,
+                color = StartExAmber,
+                modifier = Modifier.padding(top = 10.dp),
+            )
         }
-        OutlinedButton(
-            onClick = onRestoreWallet,
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .heightIn(min = 48.dp),
-        ) {
-            Text(stringResource(R.string.restore_wallet))
-        }
     }
-    Text(
-        text = stringResource(R.string.wallet_setup_can_continue),
-        style = MaterialTheme.typography.bodySmall,
-        color = StartExAmber,
-        modifier = Modifier.padding(top = 10.dp),
-    )
 }
 
 @Composable
@@ -387,8 +391,9 @@ private fun ProviderSetupCard(
                 state.configuredProviders.size == CredentialProviders.size &&
                     state.activatedProviders.size == CredentialProviders.size,
             detail =
-                stringResource(
-                    R.string.provider_stored_active_count,
+                pluralStringResource(
+                    R.plurals.provider_stored_active_count,
+                    state.configuredProviders.size,
                     state.configuredProviders.size,
                     state.activatedProviders.size,
                     CredentialProviders.size,
@@ -420,7 +425,11 @@ private fun TrustedAddressSetupCard(
                 if (state.trustedAddresses.isEmpty()) {
                     stringResource(R.string.optional_not_configured)
                 } else {
-                    stringResource(R.string.trusted_address_count, state.trustedAddresses.size)
+                    pluralStringResource(
+                        R.plurals.trusted_address_count,
+                        state.trustedAddresses.size,
+                        state.trustedAddresses.size,
+                    )
                 },
         )
         if (state.walletAddress != null) {
@@ -452,8 +461,9 @@ private fun RiskLimitCard(state: PersistedAppState) {
                 label = stringResource(R.string.hard_limits),
                 ready = true,
                 detail =
-                    stringResource(
-                        R.string.risk_summary,
+                    pluralStringResource(
+                        R.plurals.risk_summary,
+                        state.risk.maximumOpenPositions,
                         state.risk.maximumOpenPositions,
                         state.risk.maximumTradesPerDay,
                     ),
@@ -512,8 +522,9 @@ private fun CompletionChecklist(state: PersistedAppState) {
             stringResource(R.string.provider_keys),
             state.configuredProviders.size == CredentialProviders.size &&
                 state.activatedProviders.size == CredentialProviders.size,
-            stringResource(
-                R.string.provider_stored_active_count,
+            pluralStringResource(
+                R.plurals.provider_stored_active_count,
+                state.configuredProviders.size,
                 state.configuredProviders.size,
                 state.activatedProviders.size,
                 CredentialProviders.size,

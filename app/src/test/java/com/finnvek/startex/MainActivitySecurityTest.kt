@@ -1,6 +1,9 @@
 package com.finnvek.startex
 
 import android.provider.Settings
+import android.view.InputDevice
+import android.view.MotionEvent
+import android.view.View
 import android.view.WindowManager
 import com.finnvek.startex.service.TradingMonitorService
 import com.finnvek.startex.ui.batteryOptimizationSettingsIntent
@@ -8,8 +11,10 @@ import com.finnvek.startex.ui.emergencyExitServiceIntent
 import com.finnvek.startex.ui.sellNowServiceIntent
 import com.finnvek.startex.ui.stopAfterCloseServiceIntent
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -28,6 +33,48 @@ class MainActivitySecurityTest {
             0,
             activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE,
         )
+        assertTrue(activity.window.decorView.filterTouchesWhenObscured)
+    }
+
+    @Test
+    fun partiallyObscuredTouchesAreRejected() {
+        val activity = Robolectric.buildActivity(MainActivity::class.java).create().get()
+        val event = touchEvent(MotionEvent.FLAG_WINDOW_IS_PARTIALLY_OBSCURED)
+
+        try {
+            assertFalse(activity.dispatchTouchEvent(event))
+        } finally {
+            event.recycle()
+        }
+    }
+
+    @Test
+    fun fullyObscuredTouchesAreFilteredWhileUnobscuredTouchesRemainUsable() {
+        val activity = Robolectric.buildActivity(MainActivity::class.java).setup().get()
+        var deliveredTouches = 0
+        activity.setContentView(
+            object : View(activity) {
+                override fun onTouchEvent(event: MotionEvent): Boolean {
+                    deliveredTouches += 1
+                    return true
+                }
+            },
+        )
+        val size = View.MeasureSpec.makeMeasureSpec(100, View.MeasureSpec.EXACTLY)
+        activity.window.decorView.measure(size, size)
+        activity.window.decorView.layout(0, 0, 100, 100)
+        val obscured = touchEvent(MotionEvent.FLAG_WINDOW_IS_OBSCURED)
+        val unobscured = touchEvent(0)
+
+        try {
+            assertFalse(activity.dispatchTouchEvent(obscured))
+            assertEquals(0, deliveredTouches)
+            assertTrue(activity.dispatchTouchEvent(unobscured))
+            assertEquals(1, deliveredTouches)
+        } finally {
+            obscured.recycle()
+            unobscured.recycle()
+        }
     }
 
     @Test
@@ -54,4 +101,34 @@ class MainActivitySecurityTest {
         assertEquals(TradingMonitorService.ACTION_EMERGENCY_EXIT, emergencyExit.action)
         assertEquals(TradingMonitorService::class.java.name, emergencyExit.component?.className)
     }
+
+    private fun touchEvent(flags: Int): MotionEvent =
+        MotionEvent.obtain(
+            0,
+            0,
+            MotionEvent.ACTION_DOWN,
+            1,
+            arrayOf(
+                MotionEvent.PointerProperties().apply {
+                    id = 0
+                    toolType = MotionEvent.TOOL_TYPE_FINGER
+                },
+            ),
+            arrayOf(
+                MotionEvent.PointerCoords().apply {
+                    x = 10f
+                    y = 10f
+                    pressure = 1f
+                    size = 1f
+                },
+            ),
+            0,
+            0,
+            1f,
+            1f,
+            0,
+            0,
+            InputDevice.SOURCE_TOUCHSCREEN,
+            flags,
+        )
 }

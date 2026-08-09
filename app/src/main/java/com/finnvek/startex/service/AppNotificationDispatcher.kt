@@ -38,7 +38,7 @@ internal object AppNotificationDispatcher {
             PendingIntent.getActivity(
                 context,
                 REQUEST_OPEN,
-                Intent(context, MainActivity::class.java),
+                notificationOpenAppIntent(context),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
         val notification =
@@ -197,3 +197,5 @@ internal object AppNotificationDispatcher {
     private const val REQUEST_OPEN = 100
     private const val ALERT_DEDUPE_MILLIS = 15 * 60 * 1_000L
 }
+
+internal fun notificationOpenAppIntent(context: Context): Intent = Intent().setClass(context, MainActivity::class.java)

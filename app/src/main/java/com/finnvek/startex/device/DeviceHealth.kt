@@ -8,6 +8,7 @@ import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.NetworkCapabilities
 import android.os.BatteryManager
+import android.os.Build
 import android.os.PowerManager
 
 enum class NetworkTransport {
@@ -198,13 +199,15 @@ class AndroidDeviceHealthProvider(
 
     private companion object {
         val KNOWN_PLUGGED_STATES =
-            setOf(
-                0,
-                BatteryManager.BATTERY_PLUGGED_AC,
-                BatteryManager.BATTERY_PLUGGED_USB,
-                BatteryManager.BATTERY_PLUGGED_WIRELESS,
-                BatteryManager.BATTERY_PLUGGED_DOCK,
-            )
+            buildSet {
+                add(0)
+                add(BatteryManager.BATTERY_PLUGGED_AC)
+                add(BatteryManager.BATTERY_PLUGGED_USB)
+                add(BatteryManager.BATTERY_PLUGGED_WIRELESS)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    add(BatteryManager.BATTERY_PLUGGED_DOCK)
+                }
+            }
     }
 }
 

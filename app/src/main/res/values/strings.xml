@@ -11,13 +11,11 @@
     <string name="home_title">Overview</string>
     <string name="home_subtitle">Local trading monitor</string>
     <string name="start_preflight">Run preflight</string>
-    <string name="pause_monitoring">Pause entries</string>
     <string name="stop_monitoring">Stop monitoring</string>
     <string name="session_limit">Monitoring starts only when you request it, never at boot, and remains visible in a persistent notification.</string>
     <string name="wallet_balance">Wallet balance</string>
     <string name="available_balance">Available</string>
     <string name="reserved_balance">Reserved for fees and exits</string>
-    <string name="no_balance">Not loaded</string>
     <string name="today_performance">Today</string>
     <string name="realized_pnl">Realized P&amp;L</string>
     <string name="fees_paid">Fees</string>
@@ -25,9 +23,6 @@
     <string name="no_positions_title">No open positions</string>
     <string name="no_positions_body">Start with Paper mode after wallet and provider setup.</string>
     <string name="watch_title">Watch</string>
-    <string name="watch_candidates">Candidates</string>
-    <string name="watch_rejected">Rejected</string>
-    <string name="watch_events">Events</string>
     <string name="watch_empty_title">Nothing observed yet</string>
     <string name="watch_empty_body">Candidate events appear here during a monitoring session.</string>
     <string name="wallet_title">Wallet</string>
@@ -39,13 +34,10 @@
     <string name="receive">Receive</string>
     <string name="send">Send</string>
     <string name="trusted_addresses">Trusted addresses</string>
-    <string name="wallet_security">Wallet security</string>
     <string name="network_mainnet">Solana mainnet</string>
     <string name="network_warning">Only send SOL and supported Solana tokens to this address.</string>
     <string name="fiat_estimate_notice">The EUR value is an estimate for display only. The confirmed SOL balance remains the source of truth.</string>
     <string name="history_title">History</string>
-    <string name="history_empty_title">No activity</string>
-    <string name="history_empty_body">Paper and Live records are kept separate.</string>
     <string name="export_csv">Export CSV</string>
     <string name="export_json">Export JSON</string>
     <string name="settings_title">Settings</string>
@@ -103,7 +95,6 @@
     <string name="provider_not_configured">Not configured</string>
     <string name="provider_healthy">Healthy</string>
     <string name="health_offline">Offline</string>
-    <string name="configure">Configure</string>
     <string name="paper_label">PAPER — NO FUNDS ARE SPENT</string>
     <string name="live_warning">LIVE — REAL FUNDS AT RISK</string>
     <string name="close">Close</string>
@@ -122,7 +113,10 @@
     <string name="monitor_status_paused">PAUSED</string>
     <string name="monitor_status_protecting">PROTECTING POSITION</string>
     <string name="monitor_status_attention">NEEDS ATTENTION</string>
-    <string name="monitor_notification_body_detail">%1$d open · PnL %2$s · Market %3$s</string>
+    <plurals name="monitor_notification_body_detail">
+        <item quantity="one">%1$d open · PnL %2$s · Market %3$s</item>
+        <item quantity="other">%1$d open · PnL %2$s · Market %3$s</item>
+    </plurals>
     <string name="monitor_pause_action">Pause entries</string>
     <string name="monitor_resume_action">Resume entries</string>
     <string name="monitor_open_action">Open app</string>
@@ -247,7 +241,6 @@
     <string name="amount_sol_help">Use up to 9 decimal places.</string>
     <string name="amount_invalid">Enter a positive SOL amount with up to 9 decimal places.</string>
     <string name="review_transaction">Review transaction</string>
-    <string name="send_summary">Send %1$s SOL to %2$s</string>
     <string name="confirm_last_four">Confirm final 4 address characters</string>
     <string name="confirm_last_four_help">Type the final 4 characters shown above.</string>
     <string name="confirm_last_four_mismatch">The final characters do not match.</string>
@@ -327,7 +320,10 @@
     <string name="trusted_address_deleted">Trusted address deleted.</string>
     <string name="trusted_address_unlocked">Trusted address unlocked.</string>
     <string name="trusted_address_change_failed">The trusted address changed or could not be updated. No transfer was prepared.</string>
-    <string name="trusted_address_count">%1$d saved</string>
+    <plurals name="trusted_address_count">
+        <item quantity="one">%1$d saved</item>
+        <item quantity="other">%1$d saved</item>
+    </plurals>
     <string name="revealed_phrase_warning">Anyone who sees these words can control the wallet. Do not copy, share or screenshot them.</string>
     <string name="done_clear_phrase">Done — clear phrase</string>
     <string name="wallet_locked_title">StartEx is locked</string>
@@ -361,10 +357,11 @@
     <string name="candidate_score">Score</string>
     <string name="candidate_source">Source</string>
     <string name="candidate_detail_notice">This is observed provider data, not a recommendation or proof that an exit route will remain available.</string>
-    <string name="history_subtitle">Local redacted activity</string>
     <string name="export_redaction_note">Exports contain recorded candidates, snapshots, decisions, positions, transactions, fees and performance. Recovery phrases and API keys are never included.</string>
-    <string name="risk_summary">%1$d open position max · %2$d trades per day max</string>
-    <string name="provider_configured_count">%1$d of %2$d configured</string>
+    <plurals name="risk_summary">
+        <item quantity="one">%1$d open position max · %2$d trades per day max</item>
+        <item quantity="other">%1$d open positions max · %2$d trades per day max</item>
+    </plurals>
     <string name="notifications_system_managed">Permission and channel controls are managed by Android.</string>
     <string name="session_limit_short">User-started only · persistent notification · no boot start</string>
     <string name="local_only_data">Room and DataStore on this device; no analytics or cloud account.</string>
@@ -428,11 +425,17 @@
     <string name="resume_entries">Resume entries</string>
     <string name="stop_confirmation_title">Stop monitoring?</string>
     <string name="stop_confirmation_body">Monitoring and provider connections will stop. No submitted transaction can be reversed.</string>
-    <string name="stop_confirmation_open_positions_body">Stopping now ends exit protection for %1$d open position(s). No submitted transaction can be reversed.</string>
+    <plurals name="stop_confirmation_open_positions_body">
+        <item quantity="one">Stopping now ends exit protection for %1$d open position. No submitted transaction can be reversed.</item>
+        <item quantity="other">Stopping now ends exit protection for %1$d open positions. No submitted transaction can be reversed.</item>
+    </plurals>
     <string name="provider_inactive">INACTIVE</string>
     <string name="provider_activation_failed">The stored key is not active in memory. Replace it or restart after unlocking the device; monitoring remains blocked.</string>
     <string name="balance_requires_active_helius">Configure and activate Helius before refreshing the balance.</string>
-    <string name="provider_stored_active_count">%1$d stored · %2$d active · %3$d required</string>
+    <plurals name="provider_stored_active_count">
+        <item quantity="one">%1$d stored · %2$d active · %3$d required</item>
+        <item quantity="other">%1$d stored · %2$d active · %3$d required</item>
+    </plurals>
     <string name="eur_balance_value">≈ €%1$s</string>
     <string name="restore_wallet_instead">Restore wallet instead</string>
     <string name="session_state_load_failed">Stored monitoring state could not be verified. Monitoring controls remain unavailable.</string>
@@ -497,9 +500,15 @@
     <string name="performance_empty">No recorded daily performance exists for this period.</string>
     <string name="net_pnl">Net PnL</string>
     <string name="wins_losses">Wins / losses</string>
-    <string name="wins_losses_value">%1$d wins · %2$d losses</string>
+    <plurals name="wins_losses_value">
+        <item quantity="one">%1$d win · %2$d losses</item>
+        <item quantity="other">%1$d wins · %2$d losses</item>
+    </plurals>
     <string name="actual_trade_history">Actual trade history</string>
-    <string name="trade_count">%1$d trades</string>
+    <plurals name="trade_count">
+        <item quantity="one">%1$d trade</item>
+        <item quantity="other">%1$d trades</item>
+    </plurals>
     <string name="trade_history_empty_title">No matching trades</string>
     <string name="trade_history_empty_body">No persisted trade records match these filters.</string>
     <string name="filter_all">All</string>

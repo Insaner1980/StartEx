@@ -22,6 +22,12 @@ class PreparedCipherOperation internal constructor(
 ) {
     val cryptoObject = BiometricPrompt.CryptoObject(cipher)
 
+    internal fun bindAuthenticated(authenticatedCryptoObject: BiometricPrompt.CryptoObject): PreparedCipherOperation? {
+        val authenticatedCipher = authenticatedCryptoObject.cipher ?: return null
+        if (authenticatedCipher !== cipher) return null
+        return PreparedCipherOperation(authenticatedCipher, purpose)
+    }
+
     companion object {
         const val ALLOWED_AUTHENTICATORS = BiometricManager.Authenticators.BIOMETRIC_STRONG
     }

@@ -1,0 +1,24 @@
+rules:
+  - id: startex-android-webview-javascript-interface
+    message: Review JavaScript interfaces exposed to WebView content.
+    severity: ERROR
+    languages: [kotlin, java]
+    patterns:
+      - pattern: $WEBVIEW.addJavascriptInterface($OBJECT, $NAME)
+
+  - id: startex-android-webview-universal-file-access
+    message: Universal file URL access weakens the WebView origin boundary.
+    severity: ERROR
+    languages: [kotlin, java]
+    pattern-either:
+      - pattern: $SETTINGS.setAllowUniversalAccessFromFileURLs(true)
+      - pattern: $SETTINGS.allowUniversalAccessFromFileURLs = true
+
+  - id: startex-android-cleartext-traffic-enabled
+    message: Cleartext traffic must not be enabled globally.
+    severity: ERROR
+    languages: [generic]
+    paths:
+      include:
+        - app/src/main/AndroidManifest.xml
+    pattern-regex: 'usesCleartextTraffic\s*=\s*"true"'

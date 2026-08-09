@@ -71,6 +71,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -142,8 +143,9 @@ fun HomeScreen(
     onSellNow: (String) -> Unit,
     onEmergencyExit: () -> Unit,
     onStopAfterClose: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    ScreenColumn {
+    ScreenColumn(modifier = modifier) {
         ScreenHeader(
             title = stringResource(R.string.home_title),
             subtitle = stringResource(R.string.home_subtitle),
@@ -185,7 +187,7 @@ fun HomeScreen(
             SectionCard {
                 SectionHeading(
                     stringResource(R.string.recovery_required_title),
-                    stringResource(R.string.recovery_required_body),
+                    subtitle = stringResource(R.string.recovery_required_body),
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -213,7 +215,10 @@ fun HomeScreen(
         }
         Spacer(modifier = Modifier.height(14.dp))
         SectionCard {
-            SectionHeading(stringResource(R.string.wallet_balance), state.walletAddress?.let(::abbreviateAddress))
+            SectionHeading(
+                stringResource(R.string.wallet_balance),
+                subtitle = state.walletAddress?.let(::abbreviateAddress),
+            )
             Spacer(modifier = Modifier.height(16.dp))
             MetricRow(
                 stringResource(R.string.available_balance),
@@ -330,7 +335,7 @@ fun HomeScreen(
             SectionCard {
                 SectionHeading(
                     stringResource(R.string.demo_monitoring_disabled),
-                    stringResource(R.string.demo_monitoring_disabled_body),
+                    subtitle = stringResource(R.string.demo_monitoring_disabled_body),
                 )
             }
         } else {
@@ -413,6 +418,7 @@ fun HomeScreen(
 fun WatchScreen(
     candidates: List<TokenCandidateEntity>,
     events: List<AppEventEntity>,
+    modifier: Modifier = Modifier,
     demoMode: Boolean = false,
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
@@ -433,7 +439,7 @@ fun WatchScreen(
             stringResource(R.string.watch_events_count, events.size),
         )
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(modifier = modifier.fillMaxSize()) {
         Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
             ScreenHeader(title = stringResource(R.string.watch_title))
             if (demoMode) {
@@ -535,8 +541,9 @@ fun WalletScreen(
     onReveal: () -> Unit,
     onLock: () -> Unit,
     onRefreshBalance: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    ScreenColumn {
+    ScreenColumn(modifier = modifier) {
         ScreenHeader(
             title = stringResource(R.string.wallet_title),
             subtitle = stringResource(R.string.wallet_dedicated),
@@ -554,7 +561,7 @@ fun WalletScreen(
             SectionCard {
                 SectionHeading(
                     stringResource(R.string.demo_wallet_title),
-                    stringResource(R.string.demo_wallet_body),
+                    subtitle = stringResource(R.string.demo_wallet_body),
                 )
                 Spacer(modifier = Modifier.height(14.dp))
                 MetricRow(stringResource(R.string.available_balance), balanceSummary(state))
@@ -591,7 +598,10 @@ fun WalletScreen(
             }
         } else {
             SectionCard {
-                SectionHeading(stringResource(R.string.wallet_address), stringResource(R.string.network_mainnet))
+                SectionHeading(
+                    stringResource(R.string.wallet_address),
+                    subtitle = stringResource(R.string.network_mainnet),
+                )
                 Spacer(modifier = Modifier.height(12.dp))
                 AddressText(address, abbreviated = false)
                 Spacer(modifier = Modifier.height(16.dp))
@@ -680,7 +690,12 @@ fun WalletScreen(
                 SettingsRow(
                     icon = Icons.Outlined.Wallet,
                     title = stringResource(R.string.trusted_addresses),
-                    supportingText = stringResource(R.string.trusted_address_count, state.trustedAddresses.size),
+                    supportingText =
+                        pluralStringResource(
+                            R.plurals.trusted_address_count,
+                            state.trustedAddresses.size,
+                            state.trustedAddresses.size,
+                        ),
                     onClick = onTrustedAddresses,
                 ) { Icon(Icons.Outlined.ChevronRight, contentDescription = null) }
                 SettingsRow(
@@ -707,136 +722,138 @@ private fun WalletDataSections(
 ) {
     val standardHoldings = state.tokenHoldings.filterNot { holding -> holding.isToken2022 }
     val token2022Holdings = state.tokenHoldings.filter { holding -> holding.isToken2022 }
-    Spacer(modifier = Modifier.height(14.dp))
-    SectionCard {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            SectionHeading(
-                stringResource(R.string.token_holdings),
-                state.tokenHoldingsSlot?.let { stringResource(R.string.balance_slot, it) },
-            )
-            if (state.walletDataLoading) {
-                CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-            }
-        }
-        WalletDataFreshness(state)
-        state.walletDataError?.let { error ->
-            Text(
-                text = stringResource(error),
-                style = MaterialTheme.typography.bodyMedium,
-                color = StartExAmber,
-                modifier = Modifier.padding(top = 10.dp),
-            )
-        }
-        when {
-            state.walletDataLoading && state.tokenHoldings.isEmpty() -> {
-                Text(
-                    text = stringResource(R.string.wallet_data_loading),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 12.dp),
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Spacer(modifier = Modifier.height(14.dp))
+        SectionCard {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                SectionHeading(
+                    stringResource(R.string.token_holdings),
+                    subtitle = state.tokenHoldingsSlot?.let { stringResource(R.string.balance_slot, it) },
                 )
-            }
-
-            state.walletDataError != null && state.tokenHoldings.isEmpty() -> {
-                Unit
-            }
-
-            state.tokenHoldings.isEmpty() -> {
-                EmptyState(
-                    icon = Icons.Outlined.AccountBalanceWallet,
-                    title = stringResource(R.string.token_holdings_empty_title),
-                    body = stringResource(R.string.token_holdings_empty_body),
-                )
-            }
-
-            else -> {
-                standardHoldings.take(WALLET_DATA_DISPLAY_LIMIT).forEach { holding ->
-                    TokenHoldingRow(holding)
+                if (state.walletDataLoading) {
+                    CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                 }
-                if (token2022Holdings.isNotEmpty()) {
-                    HorizontalDivider(color = StartExOutline, modifier = Modifier.padding(vertical = 10.dp))
+            }
+            WalletDataFreshness(state)
+            state.walletDataError?.let { error ->
+                Text(
+                    text = stringResource(error),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = StartExAmber,
+                    modifier = Modifier.padding(top = 10.dp),
+                )
+            }
+            when {
+                state.walletDataLoading && state.tokenHoldings.isEmpty() -> {
                     Text(
-                        text = stringResource(R.string.token_2022_caution),
+                        text = stringResource(R.string.wallet_data_loading),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = StartExAmber,
+                        modifier = Modifier.padding(top = 12.dp),
                     )
-                    token2022Holdings.take(WALLET_DATA_DISPLAY_LIMIT).forEach { holding ->
+                }
+
+                state.walletDataError != null && state.tokenHoldings.isEmpty() -> {
+                    Unit
+                }
+
+                state.tokenHoldings.isEmpty() -> {
+                    EmptyState(
+                        icon = Icons.Outlined.AccountBalanceWallet,
+                        title = stringResource(R.string.token_holdings_empty_title),
+                        body = stringResource(R.string.token_holdings_empty_body),
+                    )
+                }
+
+                else -> {
+                    standardHoldings.take(WALLET_DATA_DISPLAY_LIMIT).forEach { holding ->
                         TokenHoldingRow(holding)
+                    }
+                    if (token2022Holdings.isNotEmpty()) {
+                        HorizontalDivider(color = StartExOutline, modifier = Modifier.padding(vertical = 10.dp))
+                        Text(
+                            text = stringResource(R.string.token_2022_caution),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = StartExAmber,
+                        )
+                        token2022Holdings.take(WALLET_DATA_DISPLAY_LIMIT).forEach { holding ->
+                            TokenHoldingRow(holding)
+                        }
                     }
                 }
             }
-        }
-        OutlinedButton(
-            onClick = { Unit },
-            enabled =
-                BuildConfig.SPL_TRANSFERS_BUILD_ENABLED &&
-                    standardHoldings.isNotEmpty() &&
-                    !state.walletDataStale,
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(top = 12.dp)
-                    .heightIn(min = 48.dp),
-        ) {
-            Text(stringResource(R.string.send_spl_token))
-        }
-        Text(
-            text = stringResource(R.string.spl_send_disabled_reason),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        if (onRefresh != null) {
             OutlinedButton(
-                onClick = onRefresh,
-                enabled = !state.walletDataLoading,
+                onClick = { Unit },
+                enabled =
+                    BuildConfig.SPL_TRANSFERS_BUILD_ENABLED &&
+                        standardHoldings.isNotEmpty() &&
+                        !state.walletDataStale,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(top = 10.dp)
+                        .padding(top = 12.dp)
                         .heightIn(min = 48.dp),
             ) {
-                Icon(Icons.Outlined.Refresh, contentDescription = null)
-                Text(stringResource(R.string.refresh_wallet_data), Modifier.padding(start = 8.dp))
+                Text(stringResource(R.string.send_spl_token))
+            }
+            Text(
+                text = stringResource(R.string.spl_send_disabled_reason),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+            if (onRefresh != null) {
+                OutlinedButton(
+                    onClick = onRefresh,
+                    enabled = !state.walletDataLoading,
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 10.dp)
+                            .heightIn(min = 48.dp),
+                ) {
+                    Icon(Icons.Outlined.Refresh, contentDescription = null)
+                    Text(stringResource(R.string.refresh_wallet_data), Modifier.padding(start = 8.dp))
+                }
             }
         }
-    }
-    Spacer(modifier = Modifier.height(14.dp))
-    SectionCard {
-        SectionHeading(stringResource(R.string.recent_wallet_activity))
-        when {
-            state.walletDataLoading && state.recentWalletActivity.isEmpty() -> {
-                Text(
-                    text = stringResource(R.string.wallet_data_loading),
-                    style = MaterialTheme.typography.bodyMedium,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
+        Spacer(modifier = Modifier.height(14.dp))
+        SectionCard {
+            SectionHeading(stringResource(R.string.recent_wallet_activity))
+            when {
+                state.walletDataLoading && state.recentWalletActivity.isEmpty() -> {
+                    Text(
+                        text = stringResource(R.string.wallet_data_loading),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
 
-            state.walletDataError != null && state.recentWalletActivity.isEmpty() -> {
-                Text(
-                    text = stringResource(R.string.wallet_activity_unavailable),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = StartExAmber,
-                    modifier = Modifier.padding(top = 12.dp),
-                )
-            }
+                state.walletDataError != null && state.recentWalletActivity.isEmpty() -> {
+                    Text(
+                        text = stringResource(R.string.wallet_activity_unavailable),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = StartExAmber,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
 
-            state.recentWalletActivity.isEmpty() -> {
-                EmptyState(
-                    icon = Icons.Outlined.History,
-                    title = stringResource(R.string.wallet_activity_empty_title),
-                    body = stringResource(R.string.wallet_activity_empty_body),
-                )
-            }
+                state.recentWalletActivity.isEmpty() -> {
+                    EmptyState(
+                        icon = Icons.Outlined.History,
+                        title = stringResource(R.string.wallet_activity_empty_title),
+                        body = stringResource(R.string.wallet_activity_empty_body),
+                    )
+                }
 
-            else -> {
-                state.recentWalletActivity
-                    .take(WALLET_DATA_DISPLAY_LIMIT)
-                    .forEach { activity -> WalletActivityRow(activity) }
+                else -> {
+                    state.recentWalletActivity
+                        .take(WALLET_DATA_DISPLAY_LIMIT)
+                        .forEach { activity -> WalletActivityRow(activity) }
+                }
             }
         }
     }
@@ -844,83 +861,89 @@ private fun WalletDataSections(
 
 @Composable
 private fun WalletDataFreshness(state: PersistedAppState) {
-    state.walletDataUpdatedAtMillis?.let { updatedAt ->
-        Text(
-            text = stringResource(R.string.wallet_data_updated_at, Instant.ofEpochMilli(updatedAt).toString()),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-    }
-    if (state.walletDataStale) {
-        Text(
-            text = stringResource(R.string.wallet_data_stale),
-            style = MaterialTheme.typography.bodyMedium,
-            color = StartExAmber,
-            modifier = Modifier.padding(top = 8.dp),
-        )
+    Column(modifier = Modifier.fillMaxWidth()) {
+        state.walletDataUpdatedAtMillis?.let { updatedAt ->
+            Text(
+                text = stringResource(R.string.wallet_data_updated_at, Instant.ofEpochMilli(updatedAt).toString()),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (state.walletDataStale) {
+            Text(
+                text = stringResource(R.string.wallet_data_stale),
+                style = MaterialTheme.typography.bodyMedium,
+                color = StartExAmber,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
     }
 }
 
 @Composable
 private fun TokenHoldingRow(holding: WalletTokenHolding) {
-    HorizontalDivider(color = StartExOutline, modifier = Modifier.padding(vertical = 10.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(stringResource(R.string.unknown_token), style = MaterialTheme.typography.titleSmall)
-        if (holding.isToken2022) {
-            StatusPill(stringResource(R.string.token_2022_badge), StartExAmber)
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = StartExOutline, modifier = Modifier.padding(vertical = 10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.unknown_token), style = MaterialTheme.typography.titleSmall)
+            if (holding.isToken2022) {
+                StatusPill(stringResource(R.string.token_2022_badge), StartExAmber)
+            }
         }
+        AddressText(holding.mint, abbreviated = false)
+        Text(
+            text =
+                stringResource(
+                    R.string.token_amount_details,
+                    holding.formattedAmount,
+                    holding.amountAtomic.toString(),
+                ),
+            style = MaterialTheme.typography.bodyMedium,
+            modifier = Modifier.padding(top = 6.dp),
+        )
+        Text(
+            text = stringResource(R.string.token_metadata_unavailable),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
-    AddressText(holding.mint, abbreviated = false)
-    Text(
-        text =
-            stringResource(
-                R.string.token_amount_details,
-                holding.formattedAmount,
-                holding.amountAtomic.toString(),
-            ),
-        style = MaterialTheme.typography.bodyMedium,
-        modifier = Modifier.padding(top = 6.dp),
-    )
-    Text(
-        text = stringResource(R.string.token_metadata_unavailable),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
 }
 
 @Composable
 private fun WalletActivityRow(activity: WalletActivity) {
-    HorizontalDivider(color = StartExOutline, modifier = Modifier.padding(vertical = 10.dp))
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(stringResource(R.string.transaction_signature), style = MaterialTheme.typography.titleSmall)
-        StatusPill(
-            text =
-                stringResource(
-                    if (activity.failed) R.string.transaction_failed else R.string.transaction_observed,
-                ),
-            color = if (activity.failed) StartExRed else StartExGreen,
-        )
-    }
-    AddressText(activity.signature, abbreviated = true)
-    Text(
-        text = stringResource(R.string.wallet_activity_slot, activity.slot),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-    )
-    activity.blockTimeMillis?.let { timestamp ->
+    Column(modifier = Modifier.fillMaxWidth()) {
+        HorizontalDivider(color = StartExOutline, modifier = Modifier.padding(vertical = 10.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.transaction_signature), style = MaterialTheme.typography.titleSmall)
+            StatusPill(
+                text =
+                    stringResource(
+                        if (activity.failed) R.string.transaction_failed else R.string.transaction_observed,
+                    ),
+                color = if (activity.failed) StartExRed else StartExGreen,
+            )
+        }
+        AddressText(activity.signature, abbreviated = true)
         Text(
-            text = Instant.ofEpochMilli(timestamp).toString(),
+            text = stringResource(R.string.wallet_activity_slot, activity.slot),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        activity.blockTimeMillis?.let { timestamp ->
+            Text(
+                text = Instant.ofEpochMilli(timestamp).toString(),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -940,6 +963,7 @@ fun HistoryScreen(
     state: PersistedAppState,
     onExportCsv: () -> Unit,
     onExportJson: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var modeFilter by rememberSaveable { mutableStateOf(HistoryModeFilter.All) }
     var dateFilter by rememberSaveable { mutableStateOf(HistoryDateFilter.All) }
@@ -953,7 +977,7 @@ fun HistoryScreen(
             nowMillis,
         )
 
-    ScreenColumn {
+    ScreenColumn(modifier = modifier) {
         ScreenHeader(
             title = stringResource(R.string.history_title),
             subtitle = stringResource(R.string.history_actual_subtitle),
@@ -970,7 +994,7 @@ fun HistoryScreen(
         SectionCard {
             SectionHeading(
                 stringResource(R.string.actual_performance_summary),
-                stringResource(R.string.performance_summary_filtered),
+                subtitle = stringResource(R.string.performance_summary_filtered),
             )
             if (performance == null) {
                 Text(
@@ -990,14 +1014,19 @@ fun HistoryScreen(
                 )
                 MetricRow(
                     stringResource(R.string.wins_losses),
-                    stringResource(R.string.wins_losses_value, performance.wins, performance.losses),
+                    pluralStringResource(
+                        R.plurals.wins_losses_value,
+                        performance.wins.toInt(),
+                        performance.wins,
+                        performance.losses,
+                    ),
                 )
             }
         }
         Spacer(modifier = Modifier.height(14.dp))
         SectionHeading(
             stringResource(R.string.actual_trade_history),
-            stringResource(R.string.trade_count, trades.size),
+            subtitle = pluralStringResource(R.plurals.trade_count, trades.size, trades.size),
         )
         if (trades.isEmpty()) {
             EmptyState(
@@ -1263,158 +1292,160 @@ internal fun SecurityModeControl(
     var reducedSecurityAcknowledged by rememberSaveable { mutableStateOf(false) }
     val controlsEnabled = !state.demoMode && state.monitorState == MonitorState.Stopped
 
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        RadioButton(
-            selected = !state.unattendedMode,
-            onClick = { if (state.unattendedMode) showDisableDialog = true },
-            enabled = controlsEnabled,
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.secure_session), style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text = stringResource(R.string.secure_session_description),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            RadioButton(
+                selected = !state.unattendedMode,
+                onClick = { if (state.unattendedMode) showDisableDialog = true },
+                enabled = controlsEnabled,
             )
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.secure_session), style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = stringResource(R.string.secure_session_description),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
         }
-    }
-    HorizontalDivider(color = StartExOutline)
-    Row(
-        modifier = Modifier.padding(top = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        RadioButton(
-            selected = state.unattendedMode,
-            onClick = { if (!state.unattendedMode) showEnableDialog = true },
-            enabled = controlsEnabled,
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.unattended_mode), style = MaterialTheme.typography.bodyLarge)
-            Text(
-                text =
-                    stringResource(
-                        if (state.unattendedMode) {
-                            R.string.unattended_mode_active
-                        } else {
-                            R.string.unattended_mode_description
-                        },
-                    ),
-                style = MaterialTheme.typography.bodySmall,
-                color = if (state.unattendedMode) StartExAmber else MaterialTheme.colorScheme.onSurfaceVariant,
+        HorizontalDivider(color = StartExOutline)
+        Row(
+            modifier = Modifier.padding(top = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(
+                selected = state.unattendedMode,
+                onClick = { if (!state.unattendedMode) showEnableDialog = true },
+                enabled = controlsEnabled,
             )
-            Text(
-                text =
-                    state.risk?.let { risk ->
+            Column(modifier = Modifier.weight(1f)) {
+                Text(stringResource(R.string.unattended_mode), style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text =
                         stringResource(
-                            R.string.unattended_caps_summary,
-                            formatSol(risk.maximumExposureLamports),
-                            formatSol(risk.maximumDailyLossLamports),
-                        )
-                    } ?: stringResource(R.string.unattended_caps_missing),
-                style = MaterialTheme.typography.bodySmall,
-                color =
-                    if (state.unattendedRiskCapsReady) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        StartExAmber
-                    },
+                            if (state.unattendedMode) {
+                                R.string.unattended_mode_active
+                            } else {
+                                R.string.unattended_mode_description
+                            },
+                        ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (state.unattendedMode) StartExAmber else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text =
+                        state.risk?.let { risk ->
+                            stringResource(
+                                R.string.unattended_caps_summary,
+                                formatSol(risk.maximumExposureLamports),
+                                formatSol(risk.maximumDailyLossLamports),
+                            )
+                        } ?: stringResource(R.string.unattended_caps_missing),
+                    style = MaterialTheme.typography.bodySmall,
+                    color =
+                        if (state.unattendedRiskCapsReady) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            StartExAmber
+                        },
+                )
+            }
+        }
+
+        if (showEnableDialog) {
+            val canEnable =
+                canEnableUnattendedMode(
+                    walletConfigured = state.walletAddress != null,
+                    risk = state.risk,
+                    monitorState = state.monitorState,
+                    dedicatedWalletAcknowledged = dedicatedWalletAcknowledged,
+                    reducedSecurityAcknowledged = reducedSecurityAcknowledged,
+                )
+            AlertDialog(
+                onDismissRequest = {
+                    showEnableDialog = false
+                    dedicatedWalletAcknowledged = false
+                    reducedSecurityAcknowledged = false
+                },
+                title = { Text(stringResource(R.string.enable_unattended_title)) },
+                text = {
+                    Column {
+                        Text(stringResource(R.string.enable_unattended_body))
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = dedicatedWalletAcknowledged,
+                                onCheckedChange = { dedicatedWalletAcknowledged = it },
+                            )
+                            Text(
+                                stringResource(R.string.unattended_ack_dedicated_wallet),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Checkbox(
+                                checked = reducedSecurityAcknowledged,
+                                onCheckedChange = { reducedSecurityAcknowledged = it },
+                            )
+                            Text(
+                                stringResource(R.string.unattended_ack_reduced_security),
+                                modifier = Modifier.weight(1f),
+                            )
+                        }
+                        if (!state.unattendedRiskCapsReady) {
+                            Text(
+                                stringResource(R.string.unattended_caps_missing),
+                                color = StartExAmber,
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showEnableDialog = false
+                            onRequestSecurityMode(
+                                true,
+                                dedicatedWalletAcknowledged,
+                                reducedSecurityAcknowledged,
+                            )
+                            dedicatedWalletAcknowledged = false
+                            reducedSecurityAcknowledged = false
+                        },
+                        enabled = canEnable,
+                    ) {
+                        Text(stringResource(R.string.enable_unattended_action))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showEnableDialog = false }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                },
             )
         }
-    }
 
-    if (showEnableDialog) {
-        val canEnable =
-            canEnableUnattendedMode(
-                walletConfigured = state.walletAddress != null,
-                risk = state.risk,
-                monitorState = state.monitorState,
-                dedicatedWalletAcknowledged = dedicatedWalletAcknowledged,
-                reducedSecurityAcknowledged = reducedSecurityAcknowledged,
+        if (showDisableDialog) {
+            AlertDialog(
+                onDismissRequest = { showDisableDialog = false },
+                title = { Text(stringResource(R.string.enable_secure_session_title)) },
+                text = { Text(stringResource(R.string.enable_secure_session_body)) },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showDisableDialog = false
+                            onRequestSecurityMode(false, false, false)
+                        },
+                    ) {
+                        Text(stringResource(R.string.enable_secure_session_action))
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showDisableDialog = false }) {
+                        Text(stringResource(R.string.cancel))
+                    }
+                },
             )
-        AlertDialog(
-            onDismissRequest = {
-                showEnableDialog = false
-                dedicatedWalletAcknowledged = false
-                reducedSecurityAcknowledged = false
-            },
-            title = { Text(stringResource(R.string.enable_unattended_title)) },
-            text = {
-                Column {
-                    Text(stringResource(R.string.enable_unattended_body))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = dedicatedWalletAcknowledged,
-                            onCheckedChange = { dedicatedWalletAcknowledged = it },
-                        )
-                        Text(
-                            stringResource(R.string.unattended_ack_dedicated_wallet),
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(
-                            checked = reducedSecurityAcknowledged,
-                            onCheckedChange = { reducedSecurityAcknowledged = it },
-                        )
-                        Text(
-                            stringResource(R.string.unattended_ack_reduced_security),
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                    if (!state.unattendedRiskCapsReady) {
-                        Text(
-                            stringResource(R.string.unattended_caps_missing),
-                            color = StartExAmber,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showEnableDialog = false
-                        onRequestSecurityMode(
-                            true,
-                            dedicatedWalletAcknowledged,
-                            reducedSecurityAcknowledged,
-                        )
-                        dedicatedWalletAcknowledged = false
-                        reducedSecurityAcknowledged = false
-                    },
-                    enabled = canEnable,
-                ) {
-                    Text(stringResource(R.string.enable_unattended_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEnableDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
-    }
-
-    if (showDisableDialog) {
-        AlertDialog(
-            onDismissRequest = { showDisableDialog = false },
-            title = { Text(stringResource(R.string.enable_secure_session_title)) },
-            text = { Text(stringResource(R.string.enable_secure_session_body)) },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDisableDialog = false
-                        onRequestSecurityMode(false, false, false)
-                    },
-                ) {
-                    Text(stringResource(R.string.enable_secure_session_action))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDisableDialog = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
-            },
-        )
+        }
     }
 }
 
@@ -1441,12 +1472,13 @@ fun ConfigurationEditorScreen(
     saveState: ConfigurationSaveState,
     onSave: (RiskConfigurationInput, StrategyConfigurationInput) -> Unit,
     onBack: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     BackHandler(onBack = onBack)
     val risk = state.risk
     val strategy = state.strategy
     if (risk == null || strategy == null) {
-        ScreenColumn {
+        ScreenColumn(modifier = modifier) {
             ScreenHeader(title = stringResource(R.string.strategy_risk_title))
             EmptyState(
                 icon = Icons.Outlined.ErrorOutline,
@@ -1472,7 +1504,7 @@ fun ConfigurationEditorScreen(
     val saving = saveState is ConfigurationSaveState.Saving
     val editingEnabled = state.configurationEditingAllowed && !saving
 
-    ScreenColumn {
+    ScreenColumn(modifier = modifier) {
         ScreenHeader(
             title = stringResource(R.string.strategy_risk_title),
             subtitle = stringResource(R.string.configuration_versions, strategy.version, risk.version),
@@ -1914,8 +1946,9 @@ fun SettingsScreen(
     onRequestSecurityMode: (Boolean, Boolean, Boolean) -> Unit,
     onStrategyAndRisk: () -> Unit,
     onBatteryOptimizationSettings: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    ScreenColumn {
+    ScreenColumn(modifier = modifier) {
         ScreenHeader(title = stringResource(R.string.settings_title))
         if (state.demoMode) {
             Spacer(modifier = Modifier.height(14.dp))
@@ -1955,7 +1988,12 @@ fun SettingsScreen(
                 title = stringResource(R.string.settings_strategy),
                 supportingText =
                     state.risk?.let {
-                        stringResource(R.string.risk_summary, it.maximumOpenPositions, it.maximumTradesPerDay)
+                        pluralStringResource(
+                            R.plurals.risk_summary,
+                            it.maximumOpenPositions,
+                            it.maximumOpenPositions,
+                            it.maximumTradesPerDay,
+                        )
                     } ?: stringResource(R.string.status_action_required),
                 onClick = onStrategyAndRisk.takeUnless { state.demoMode },
             ) { Icon(Icons.Outlined.ChevronRight, contentDescription = null) }
@@ -1963,8 +2001,9 @@ fun SettingsScreen(
                 icon = Icons.Outlined.SettingsEthernet,
                 title = stringResource(R.string.settings_providers),
                 supportingText =
-                    stringResource(
-                        R.string.provider_stored_active_count,
+                    pluralStringResource(
+                        R.plurals.provider_stored_active_count,
+                        state.configuredProviders.size,
                         state.configuredProviders.size,
                         state.activatedProviders.size,
                         CredentialProviders.size,
@@ -2029,7 +2068,7 @@ fun SettingsScreen(
         SectionCard {
             SectionHeading(
                 stringResource(R.string.live_locked),
-                stringResource(R.string.live_locked_body),
+                subtitle = stringResource(R.string.live_locked_body),
             )
         }
         if (state.monitorState != MonitorState.Stopped) {
@@ -2037,7 +2076,7 @@ fun SettingsScreen(
             SectionCard {
                 SectionHeading(
                     stringResource(R.string.emergency_controls),
-                    stringResource(R.string.emergency_controls_body),
+                    subtitle = stringResource(R.string.emergency_controls_body),
                 )
                 Spacer(modifier = Modifier.height(12.dp))
                 OutlinedButton(
@@ -2062,8 +2101,9 @@ fun PreflightScreen(
     onBack: () -> Unit,
     onStart: () -> Unit,
     onRequestNotifications: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
-    ScreenColumn {
+    ScreenColumn(modifier = modifier) {
         ScreenHeader(title = stringResource(R.string.preflight_title))
         Text(
             text = stringResource(R.string.preflight_intro),
@@ -2148,7 +2188,7 @@ private fun DeviceHealthDiagnosticsCard(snapshot: DeviceHealthSnapshot?) {
     SectionCard {
         SectionHeading(
             stringResource(R.string.device_health_diagnostics_title),
-            stringResource(R.string.device_health_diagnostics_body),
+            subtitle = stringResource(R.string.device_health_diagnostics_body),
         )
         Spacer(modifier = Modifier.height(12.dp))
         MetricRow(
@@ -2263,10 +2303,11 @@ fun LockScreen(
     onUnlock: () -> Unit,
     onRestore: () -> Unit,
     onStop: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     Column(
         modifier =
-            Modifier
+            modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
                 .padding(28.dp),
@@ -2348,9 +2389,10 @@ fun ProviderSetupScreen(
     onRemove: (ProviderId) -> Unit,
     onTest: (ProviderId) -> Unit,
     onBack: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     BackHandler(onBack = onBack)
-    ScreenColumn {
+    ScreenColumn(modifier = modifier) {
         ScreenHeader(
             title = stringResource(R.string.provider_setup_title),
             subtitle = stringResource(R.string.provider_setup_subtitle),
@@ -2416,7 +2458,10 @@ private fun ProviderCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                SectionHeading(providerName, stringResource(providerDescription(provider)))
+                SectionHeading(
+                    providerName,
+                    subtitle = stringResource(providerDescription(provider)),
+                )
             }
             StatusPill(
                 text = providerStatus(configured, active, health),
@@ -2519,7 +2564,10 @@ private fun KeylessProviderCard(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                SectionHeading("Kraken", stringResource(R.string.provider_kraken_description))
+                SectionHeading(
+                    "Kraken",
+                    subtitle = stringResource(R.string.provider_kraken_description),
+                )
             }
             StatusPill(
                 text = providerStatus(configured = true, active = true, health = health),
@@ -2674,103 +2722,109 @@ private fun PreflightRow(
     label: String,
     ready: Boolean,
 ) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = if (ready) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline,
-            contentDescription = null,
-            tint = if (ready) StartExGreen else StartExAmber,
-        )
-        Text(
-            text = label,
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
             modifier =
                 Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = stringResource(if (ready) R.string.status_ready else R.string.status_action_required),
-            color = if (ready) StartExGreen else StartExAmber,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = if (ready) Icons.Outlined.CheckCircle else Icons.Outlined.ErrorOutline,
+                contentDescription = null,
+                tint = if (ready) StartExGreen else StartExAmber,
+            )
+            Text(
+                text = label,
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = stringResource(if (ready) R.string.status_ready else R.string.status_action_required),
+                color = if (ready) StartExGreen else StartExAmber,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        HorizontalDivider(color = StartExOutline)
     }
-    HorizontalDivider(color = StartExOutline)
 }
 
 @Composable
 private fun PreflightNotRequiredRow(label: String) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.CheckCircle,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Text(
-            text = label,
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
             modifier =
                 Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-            style = MaterialTheme.typography.bodyMedium,
-        )
-        Text(
-            text = stringResource(R.string.not_required_paper),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.labelMedium,
-        )
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = label,
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = stringResource(R.string.not_required_paper),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelMedium,
+            )
+        }
+        HorizontalDivider(color = StartExOutline)
     }
-    HorizontalDivider(color = StartExOutline)
 }
 
 @Composable
 private fun PreflightReadyToConnectRow(label: String) {
-    Row(
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = Icons.Outlined.CheckCircle,
-            contentDescription = null,
-            tint = StartExAmber,
-        )
-        Text(
-            text = label,
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
             modifier =
                 Modifier
-                    .weight(1f)
-                    .padding(horizontal = 12.dp),
-            style = MaterialTheme.typography.bodyMedium,
-        )
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                imageVector = Icons.Outlined.CheckCircle,
+                contentDescription = null,
+                tint = StartExAmber,
+            )
+            Text(
+                text = label,
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 12.dp),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = stringResource(R.string.provider_ready_to_connect),
+                color = StartExAmber,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
         Text(
-            text = stringResource(R.string.provider_ready_to_connect),
-            color = StartExAmber,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
+            text = stringResource(R.string.pump_health_checked_on_start),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(bottom = 8.dp, start = 36.dp),
         )
+        HorizontalDivider(color = StartExOutline)
     }
-    Text(
-        text = stringResource(R.string.pump_health_checked_on_start),
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.padding(bottom = 8.dp, start = 36.dp),
-    )
-    HorizontalDivider(color = StartExOutline)
 }
 
 @Composable

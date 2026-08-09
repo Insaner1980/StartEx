@@ -2116,7 +2116,6 @@ class StartExViewModel(
         runtimeWallet = null
         replaceWalletSetup(WalletSetupState.Closed)
         replaceWalletOverlay(WalletOverlay.None)
-        super.onCleared()
     }
 
     private data class SetupState(

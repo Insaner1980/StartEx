@@ -9,6 +9,7 @@ plugins {
     alias(libs.plugins.room)
     alias(libs.plugins.ktlint)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.owasp.dependency.check)
 }
 
 java {
@@ -105,8 +106,68 @@ tasks.withType<Detekt>().configureEach {
     }
 }
 
+dependencyCheck {
+    formats = listOf("HTML", "JSON", "SARIF")
+    outputDirectory = rootProject.layout.projectDirectory.dir("reports")
+    suppressionFile =
+        rootProject.layout.projectDirectory
+            .file("config/dependency-check/suppressions.xml")
+            .asFile.absolutePath
+    data {
+        directory =
+            providers
+                .environmentVariable("DEPENDENCY_CHECK_DATA_DIRECTORY")
+                .orElse(
+                    rootProject.layout.projectDirectory
+                        .dir(".gradle/dependency-check-data")
+                        .asFile.absolutePath,
+                ).get()
+    }
+    autoUpdate =
+        providers
+            .environmentVariable("DEPENDENCY_CHECK_AUTO_UPDATE")
+            .map { it.equals("true", ignoreCase = true) || it == "1" || it.equals("yes", ignoreCase = true) }
+            .getOrElse(true)
+    failBuildOnCVSS =
+        providers
+            .environmentVariable("DEPENDENCY_CHECK_FAIL_BUILD_ON_CVSS")
+            .map { it.toFloatOrNull() ?: 7f }
+            .getOrElse(7f)
+    scanConfigurations = listOf("debugRuntimeClasspath", "releaseRuntimeClasspath")
+    skipTestGroups = true
+    analyzers {
+        ossIndex {
+            enabled = false
+        }
+    }
+    nvd {
+        providers
+            .environmentVariable("NVD_API_KEY")
+            .orNull
+            ?.trim()
+            ?.takeIf { it.isNotEmpty() }
+            ?.let { apiKey = it }
+        providers
+            .environmentVariable("NVD_API_DELAY_MS")
+            .orNull
+            ?.toIntOrNull()
+            ?.takeIf { it > 0 }
+            ?.let { delay = it }
+        providers
+            .environmentVariable("NVD_API_MAX_RETRY_COUNT")
+            .orNull
+            ?.toIntOrNull()
+            ?.takeIf { it > 0 }
+            ?.let { maxRetryCount = it }
+    }
+}
+
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
+    detektPlugins(libs.compose.rules.detekt)
+    ktlintRuleset(libs.compose.rules.ktlint)
+    lintChecks(libs.android.security.lints)
+
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)

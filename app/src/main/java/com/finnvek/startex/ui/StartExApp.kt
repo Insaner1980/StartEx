@@ -41,6 +41,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -254,7 +255,7 @@ private fun StartExContent(
             walletSetup !is WalletSetupState.Closed -> {
                 WalletFlowScreen(
                     state = walletSetup,
-                    onMnemonicSaved = viewModel::showBackupChallenge,
+                    onMnemonicSave = viewModel::showBackupChallenge,
                     onVerifyBackup = viewModel::verifyBackupChallenge,
                     onRestore = viewModel::previewRestoredWallet,
                     onSave = viewModel::requestWalletSave,
@@ -384,8 +385,9 @@ private fun StartExContent(
                         if (state.openPositions.isEmpty()) {
                             stringResource(R.string.stop_confirmation_body)
                         } else {
-                            stringResource(
-                                R.string.stop_confirmation_open_positions_body,
+                            pluralStringResource(
+                                R.plurals.stop_confirmation_open_positions_body,
+                                state.openPositions.size,
                                 state.openPositions.size,
                             )
                         },
@@ -561,7 +563,17 @@ private fun authenticate(
             ContextCompat.getMainExecutor(context),
             object : BiometricPrompt.AuthenticationCallback() {
                 override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    onSuccess(request)
+                    val authenticatedRequest =
+                        request.operation?.let { operation ->
+                            val authenticatedOperation =
+                                result.cryptoObject?.let(operation::bindAuthenticated)
+                            if (authenticatedOperation == null) {
+                                onFailure()
+                                return
+                            }
+                            request.copy(operation = authenticatedOperation)
+                        } ?: request
+                    onSuccess(authenticatedRequest)
                 }
 
                 override fun onAuthenticationError(

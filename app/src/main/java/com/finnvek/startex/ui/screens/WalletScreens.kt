@@ -2,7 +2,6 @@ package com.finnvek.startex.ui.screens
 
 import android.content.Intent
 import android.graphics.Bitmap
-import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Arrangement
@@ -69,6 +68,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
 import com.finnvek.startex.R
 import com.finnvek.startex.data.local.TrustedAddressEntity
 import com.finnvek.startex.ui.PersistedAppState
@@ -99,7 +99,7 @@ import java.math.RoundingMode
 @Composable
 fun WalletFlowScreen(
     state: WalletSetupState,
-    onMnemonicSaved: () -> Unit,
+    onMnemonicSave: () -> Unit,
     onVerifyBackup: (Map<Int, String>) -> Unit,
     onRestore: (CharArray) -> Unit,
     onSave: () -> Unit,
@@ -120,7 +120,7 @@ fun WalletFlowScreen(
         is WalletSetupState.Mnemonic -> {
             MnemonicBackupScreen(
                 state = state,
-                onContinue = onMnemonicSaved,
+                onContinue = onMnemonicSave,
                 onCancel = onCancel,
             )
         }
@@ -419,7 +419,7 @@ private fun WalletReviewScreen(
         SectionCard {
             SectionHeading(
                 stringResource(if (state.restored) R.string.restored_wallet else R.string.new_wallet),
-                stringResource(R.string.network_mainnet),
+                subtitle = stringResource(R.string.network_mainnet),
             )
             Spacer(modifier = Modifier.height(14.dp))
             AddressText(state.publicAddress, abbreviated = false)
@@ -876,7 +876,10 @@ private fun SendReviewScreen(
         SensitiveHeader(stringResource(R.string.review_transaction), onBack)
         Spacer(modifier = Modifier.height(12.dp))
         SectionCard {
-            SectionHeading(review.destinationLabel, stringResource(R.string.network_mainnet))
+            SectionHeading(
+                review.destinationLabel,
+                subtitle = stringResource(R.string.network_mainnet),
+            )
             Spacer(modifier = Modifier.height(10.dp))
             AddressText(review.destinationAddress, abbreviated = false)
             Spacer(modifier = Modifier.height(14.dp))
@@ -1035,7 +1038,7 @@ private fun TransferResultScreen(
                 OutlinedButton(
                     onClick = {
                         context.startActivity(
-                            Intent(Intent.ACTION_VIEW, Uri.parse("https://solscan.io/tx/$signature")),
+                            Intent(Intent.ACTION_VIEW, "https://solscan.io/tx/$signature".toUri()),
                         )
                     },
                     modifier =

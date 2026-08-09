@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "exceptionsFile": "config/check-exceptions.json",
+  "projectId": "startex",
+  "modules": [
+    {
+      "path": ":app",
+      "relativePath": "app",
+      "kind": "android-application",
+      "required": true,
+      "variants": ["debug", "release"],
+      "sourceSets": ["main", "test", "androidTest"]
+    }
+  ],
+  "buildTasks": [":app:assembleDebug"],
+  "testTasks": [":app:testDebugUnitTest"],
+  "includedBuilds": [],
+  "checks": {
+    "ktlintTasks": [":app:ktlintCheck"],
+    "ktlintReportFormat": "detekt-checkstyle",
+    "detektTasks": [":app:detekt"],
+    "lintTasks": [":app:lintDebug"],
+    "fullLintTasks": [":app:lintDebug", ":app:lintRelease"],
+    "stabilityTasks": [],
+    "dependencyConfigurations": ["debugRuntimeClasspath", "releaseRuntimeClasspath"],
+    "dependencyCheckTasks": [":app:dependencyCheckAnalyze"],
+    "semgrepConfig": "config/semgrep/startex-security.yml"
+  }
+}

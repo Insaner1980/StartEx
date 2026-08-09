@@ -1825,8 +1825,9 @@ class TradingMonitorService : Service() {
             .setSmallIcon(android.R.drawable.stat_notify_sync)
             .setContentTitle(getString(model.status.titleResource))
             .setContentText(
-                getString(
-                    R.string.monitor_notification_body_detail,
+                resources.getQuantityString(
+                    R.plurals.monitor_notification_body_detail,
+                    model.openPositionCount,
                     model.openPositionCount,
                     model.pnlText,
                     model.marketAgeText,

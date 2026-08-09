@@ -86,20 +86,23 @@ fun SectionCard(
 @Composable
 fun SectionHeading(
     title: String,
+    modifier: Modifier = Modifier,
     subtitle: String? = null,
 ) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-    )
-    if (subtitle != null) {
-        Spacer(modifier = Modifier.height(4.dp))
+    Column(modifier = modifier) {
         Text(
-            text = subtitle,
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            text = title,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
         )
+        if (subtitle != null) {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
     }
 }
 
@@ -107,10 +110,11 @@ fun SectionHeading(
 fun MetricRow(
     label: String,
     value: String,
+    modifier: Modifier = Modifier,
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -177,6 +181,7 @@ fun EmptyState(
 fun SettingsRow(
     icon: ImageVector,
     title: String,
+    modifier: Modifier = Modifier,
     supportingText: String? = null,
     onClick: (() -> Unit)? = null,
     trailing: @Composable RowScope.() -> Unit = {},
@@ -187,37 +192,39 @@ fun SettingsRow(
         } else {
             Modifier.clickable(role = Role.Button, onClick = onClick)
         }
-    Row(
-        modifier =
-            clickModifier
-                .fillMaxWidth()
-                .heightIn(min = 56.dp)
-                .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Column(
+    Column(modifier = modifier.fillMaxWidth()) {
+        Row(
             modifier =
-                Modifier
-                    .weight(1f)
-                    .padding(horizontal = 14.dp),
+                clickModifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .padding(vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text(text = title, style = MaterialTheme.typography.bodyLarge)
-            if (supportingText != null) {
-                Text(
-                    text = supportingText,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .padding(horizontal = 14.dp),
+            ) {
+                Text(text = title, style = MaterialTheme.typography.bodyLarge)
+                if (supportingText != null) {
+                    Text(
+                        text = supportingText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
+            trailing()
         }
-        trailing()
+        HorizontalDivider(color = StartExOutline)
     }
-    HorizontalDivider(color = StartExOutline)
 }
 
 @Composable
@@ -238,11 +245,12 @@ fun ScreenColumn(
 @Composable
 fun ScreenHeader(
     title: String,
+    modifier: Modifier = Modifier,
     subtitle: String? = null,
     trailing: @Composable () -> Unit = {},
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
