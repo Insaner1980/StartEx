@@ -1,0 +1,29 @@
+name: Dependency Submission
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  dependency-submission:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+
+      - name: Set up Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Generate and submit dependency graph
+        uses: gradle/actions/dependency-submission@4733eaac7c1b0da527e4206b7671e0061de1ce37 # v6
+        with:
+          additional-arguments: --dependency-verification lenient --no-configuration-cache
+          dependency-graph: generate-and-submit
+          validate-wrappers: true
