@@ -18,6 +18,16 @@ java {
     }
 }
 
+val releaseStoreFile = providers.environmentVariable("STARTEX_RELEASE_STORE_FILE")
+val releaseStorePassword = providers.environmentVariable("STARTEX_RELEASE_STORE_PASSWORD")
+val releaseKeyAlias = providers.environmentVariable("STARTEX_RELEASE_KEY_ALIAS")
+val releaseSigningValues = listOf(releaseStoreFile, releaseStorePassword, releaseKeyAlias)
+val releaseSigningConfigured = releaseSigningValues.all { it.isPresent }
+
+check(releaseSigningValues.none { it.isPresent } || releaseSigningConfigured) {
+    "Set all StartEx release-signing environment variables or none of them."
+}
+
 android {
     namespace = providers.gradleProperty("startex.namespace").get()
     compileSdk = 37
@@ -37,6 +47,17 @@ android {
         resValue("string", "app_name", brandName)
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = file(releaseStoreFile.get())
+                storePassword = releaseStorePassword.get()
+                keyAlias = releaseKeyAlias.get()
+                keyPassword = releaseStorePassword.get()
+            }
+        }
+    }
+
     buildTypes {
         debug {
             applicationIdSuffix = ".debug"
@@ -44,6 +65,9 @@ android {
             buildConfigField("boolean", "LIVE_TRADING_BUILD_ENABLED", "false")
         }
         release {
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
             buildConfigField("boolean", "LIVE_TRADING_BUILD_ENABLED", "false")
             isMinifyEnabled = true
             isShrinkResources = true
