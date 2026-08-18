@@ -5,6 +5,13 @@ enum class WalletAccessMode {
     UNATTENDED,
 }
 
+internal fun persistedWalletAccessMode(value: String?): WalletAccessMode =
+    if (value == KeystoreAccessMode.UNATTENDED.name) {
+        WalletAccessMode.UNATTENDED
+    } else {
+        WalletAccessMode.SECURE_SESSION
+    }
+
 enum class ModeChangeResult {
     CHANGED,
     UNCHANGED,

@@ -60,6 +60,7 @@ internal object AppNotificationDispatcher {
         key: String,
         nowMillis: Long,
     ): Boolean {
+        pruneExpiredAlerts(lastAlertAtMillis, nowMillis, ALERT_DEDUPE_MILLIS)
         while (true) {
             val previous = lastAlertAtMillis[key]
             if (
@@ -196,6 +197,24 @@ internal object AppNotificationDispatcher {
 
     private const val REQUEST_OPEN = 100
     private const val ALERT_DEDUPE_MILLIS = 15 * 60 * 1_000L
+}
+
+internal fun pruneExpiredAlerts(
+    lastAlertAtMillis: ConcurrentHashMap<String, Long>,
+    nowMillis: Long,
+    dedupeMillis: Long,
+) {
+    lastAlertAtMillis.forEach { (key, previous) ->
+        val outsideWindow =
+            if (previous <= nowMillis) {
+                nowMillis - previous >= dedupeMillis
+            } else {
+                previous - nowMillis >= dedupeMillis
+            }
+        if (outsideWindow) {
+            lastAlertAtMillis.remove(key, previous)
+        }
+    }
 }
 
 internal fun notificationOpenAppIntent(context: Context): Intent = Intent().setClass(context, MainActivity::class.java)

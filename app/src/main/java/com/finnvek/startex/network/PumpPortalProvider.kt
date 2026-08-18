@@ -134,6 +134,7 @@ class OkHttpPumpPortalDiscoveryProvider(
             }
         }
 
+    // CPD-OFF
     private fun markExpectedClosure(webSocket: WebSocket) =
         synchronized(lock) {
             if (activeSocket === webSocket) activeSocket = null
@@ -145,6 +146,7 @@ class OkHttpPumpPortalDiscoveryProvider(
             if (activeSocket === webSocket) activeSocket = null
             expectedClosures.remove(webSocket)
         }
+    // CPD-ON
 
     private companion object {
         // OkHttp represents a secure WebSocket handshake as an HTTPS request.

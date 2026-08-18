@@ -218,6 +218,7 @@ class PaperPositionMonitorTest {
             reconciliationState = "RECONCILED",
         )
 
+    // CPD-OFF
     private fun risk() =
         RiskConfigEntity(
             version = 1,
@@ -244,6 +245,7 @@ class PaperPositionMonitorTest {
             createdAtMillis = NOW.toEpochMilli(),
         )
 
+    // CPD-ON
     private fun order(
         outLamports: Long,
         requestId: String,

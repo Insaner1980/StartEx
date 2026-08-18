@@ -65,6 +65,7 @@ class JupiterTokensClientTest {
             assertEquals("audit", (result as ProviderResult.Failure).error.invalidField)
         }
 
+    // CPD-OFF
     @Test
     fun `missing suspicious-token flag fails closed`() =
         runTest {
@@ -128,6 +129,7 @@ class JupiterTokensClientTest {
             )
         }
 
+    // CPD-ON
     @Test
     fun `stale token data fails closed`() =
         runTest {

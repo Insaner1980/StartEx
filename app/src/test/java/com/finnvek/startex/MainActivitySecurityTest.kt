@@ -1,11 +1,16 @@
 package com.finnvek.startex
 
+import android.content.ComponentName
 import android.provider.Settings
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import androidx.lifecycle.ViewModelProvider
 import com.finnvek.startex.service.TradingMonitorService
+import com.finnvek.startex.ui.AuthenticationPurpose
+import com.finnvek.startex.ui.StartExUiEvent
+import com.finnvek.startex.ui.StartExViewModel
 import com.finnvek.startex.ui.batteryOptimizationSettingsIntent
 import com.finnvek.startex.ui.emergencyExitServiceIntent
 import com.finnvek.startex.ui.sellNowServiceIntent
@@ -14,6 +19,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -26,6 +32,18 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35])
 class MainActivitySecurityTest {
     @Test
+    fun debugPreviewActivityIsNotExported() {
+        val context = RuntimeEnvironment.getApplication()
+        val activity =
+            context.packageManager.getActivityInfo(
+                ComponentName(context, "androidx.compose.ui.tooling.PreviewActivity"),
+                0,
+            )
+
+        assertFalse(activity.exported)
+    }
+
+    @Test
     fun secureFlagIsSetBeforeTheActivityIsShown() {
         val activity = Robolectric.buildActivity(MainActivity::class.java).create().get()
 
@@ -34,6 +52,25 @@ class MainActivitySecurityTest {
             activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE,
         )
         assertTrue(activity.window.decorView.filterTouchesWhenObscured)
+    }
+
+    @Test
+    fun pendingAuthenticationSurvivesRecreationAndClearsWithTheViewModel() {
+        val controller = Robolectric.buildActivity(MainActivity::class.java).setup()
+        val firstViewModel = ViewModelProvider(controller.get())[StartExViewModel::class.java]
+        firstViewModel.onAuthenticationPromptStarted(
+            StartExUiEvent.Authenticate(AuthenticationPurpose.CreateWallet),
+        )
+
+        controller.recreate()
+
+        val recreatedViewModel = ViewModelProvider(controller.get())[StartExViewModel::class.java]
+        assertSame(firstViewModel, recreatedViewModel)
+        assertTrue(recreatedViewModel.authenticationInProgress)
+
+        controller.get().finish()
+        controller.pause().stop().destroy()
+        assertFalse(firstViewModel.authenticationInProgress)
     }
 
     @Test

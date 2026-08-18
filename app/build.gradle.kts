@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.ktlint)
     alias(libs.plugins.detekt)
     alias(libs.plugins.owasp.dependency.check)
+    alias(libs.plugins.stability.analyzer)
 }
 
 java {
@@ -26,6 +27,10 @@ val releaseSigningConfigured = releaseSigningValues.all { it.isPresent }
 
 check(releaseSigningValues.none { it.isPresent } || releaseSigningConfigured) {
     "Set all StartEx release-signing environment variables or none of them."
+}
+
+dependencyLocking {
+    lockAllConfigurations()
 }
 
 android {
@@ -117,6 +122,7 @@ ktlint {
 
 detekt {
     buildUponDefaultConfig = true
+    source.setFrom("src/main/java", "src/test/java", "src/androidTest/java")
     config.setFrom("$rootDir/config/detekt/detekt.yml")
     parallel = true
 }

@@ -25,8 +25,6 @@ import com.finnvek.startex.data.local.StrategyConfigEntity
 import com.finnvek.startex.data.local.TokenCandidateEntity
 import com.finnvek.startex.data.local.TokenSnapshotEntity
 import com.finnvek.startex.data.local.TradeIntentEntity
-import com.finnvek.startex.data.settings.AppSettings
-import com.finnvek.startex.data.settings.OperatingMode
 import com.finnvek.startex.device.DeviceHealthEntryPolicy
 import com.finnvek.startex.network.HeliusRealtimeEvent
 import com.finnvek.startex.network.HeliusRealtimeListener
@@ -43,6 +41,7 @@ import com.finnvek.startex.network.PumpPortalEventKind
 import com.finnvek.startex.network.PumpPortalEventListener
 import com.finnvek.startex.network.RetryPolicy
 import com.finnvek.startex.security.WalletAccessMode
+import com.finnvek.startex.security.persistedWalletAccessMode
 import com.finnvek.startex.trading.CircuitBreakerState
 import com.finnvek.startex.trading.DefaultPaperCandidateSafetyProofSource
 import com.finnvek.startex.trading.DefaultPaperRiskFactsSource
@@ -86,6 +85,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -152,7 +152,7 @@ class TradingMonitorService : Service() {
             ACTION_START -> startSession(recoveryAuthenticated = false)
             ACTION_RECOVER_AUTHENTICATED -> recoverAuthenticated()
             ACTION_PAUSE -> requestStop(StopDirective.Paused)
-            ACTION_RESUME -> startSession(recoveryAuthenticated = pausedSessionId != null)
+            ACTION_RESUME -> startSession(recoveryAuthenticated = false)
             ACTION_SELL_NOW -> requestPaperSell(intent.getStringExtra(EXTRA_POSITION_ID))
             ACTION_EMERGENCY_EXIT -> requestEmergencyPaperExit()
             ACTION_STOP_AFTER_CLOSE -> requestStopAfterClose()
@@ -277,24 +277,12 @@ class TradingMonitorService : Service() {
                 app.repository.observeActiveSession(RECOVERABLE_SESSION_STATES).first()
                     ?: return@launch
             val now = System.currentTimeMillis()
-            val updates =
-                paperEmergencyExitUpdates(
-                    positions = app.repository.openPositions(PAPER_POSITION_STATES),
-                    sessionId = active.id,
-                    nowMillis = now,
-                )
-            if (updates.isEmpty()) {
+            val updatedPositions = app.repository.requestPaperEmergencyExit(active.id, now)
+            if (updatedPositions == 0) {
                 requestStop(StopDirective.PositionsClosed)
                 return@launch
             }
             protectingOnly.set(true)
-            app.repository.updateSessionStatus(
-                id = active.id,
-                status = STATUS_PROTECTING,
-                stoppedAtMillis = null,
-                stopReason = "EMERGENCY_EXIT_REQUESTED",
-                lastHeartbeatAtMillis = now,
-            )
             activeSessionSnapshot.set(
                 active.copy(
                     status = STATUS_PROTECTING,
@@ -302,7 +290,6 @@ class TradingMonitorService : Service() {
                     lastHeartbeatAtMillis = now,
                 ),
             )
-            updates.forEach { app.repository.savePosition(it) }
             recordEvent("WARN", "RISK", "PAPER_EMERGENCY_EXIT_REQUESTED", active.id, now)
         }
     }
@@ -391,15 +378,27 @@ class TradingMonitorService : Service() {
         restartOnly: Boolean,
     ): BotSessionEntity? {
         val now = System.currentTimeMillis()
-        val latestStrategy = app.database.configDao().latestStrategy()
-        val latestRisk = app.database.configDao().latestRisk()
+        val settings = app.settings.settings.first()
+        if (settings.demoMode) {
+            app.repository.observeActiveSession(RECOVERABLE_SESSION_STATES).first()?.let { session ->
+                app.repository.updateSessionStatus(
+                    id = session.id,
+                    status = STATUS_NEEDS_ATTENTION,
+                    stoppedAtMillis = now,
+                    stopReason = StopDirective.ModeChanged.reason,
+                    lastHeartbeatAtMillis = now,
+                )
+            }
+            stopDirective.compareAndSet(null, StopDirective.ModeChanged)
+            return null
+        }
+        val (latestStrategy, latestRisk) = app.repository.latestConfiguration()
         if (latestStrategy == null || latestRisk == null) {
             recordEvent("ERROR", "SESSION", "CONFIGURATION_MISSING", null, now)
             stopDirective.compareAndSet(null, StopDirective.PreflightFailed("CONFIGURATION_MISSING"))
             return null
         }
 
-        val settings = app.settings.settings.first()
         val policy =
             RetentionPolicy(
                 snapshotDays = settings.snapshotRetentionDays,
@@ -446,14 +445,18 @@ class TradingMonitorService : Service() {
                 nowMillis = now,
             )
         }
-        val accessMode = settings.walletAccessMode()
+        val accessMode =
+            persistedWalletAccessMode(
+                app.repository.walletSecretEnvelope()?.keystoreAccessMode,
+            )
         val configured = requiredProviderKeysConfigured()
         val healthy = requiredProvidersHealthy(risk, now)
         val validRisk = risk.isValidForMonitoring()
 
         val startAction =
             MonitoringSessionPolicy.startAction(
-                paperMode = settings.operatingMode == OperatingMode.PAPER && recoverable?.mode != "LIVE",
+                operatingMode = settings.operatingMode,
+                persistedSessionMode = recoverable?.mode,
                 providersConfigured = configured,
                 riskLimitsValid = validRisk,
             )
@@ -637,6 +640,7 @@ class TradingMonitorService : Service() {
             val dispatch = PaperCandidateDispatchPolicy(PAPER_CANDIDATE_BUFFER_CAPACITY)
             val coordinator = paperCandidateCoordinator(strategy, risk)
             val positionMonitor = paperPositionMonitor(risk)
+            launch { stopWhenModeBecomesIncompatible(session) }
             launch { consumeEvents(session, events, candidates, dispatch) }
             launch { consumePaperCandidates(session, strategy, risk, candidates, dispatch, coordinator) }
             launch { monitorPaperPositions(risk, positionMonitor) }
@@ -645,6 +649,15 @@ class TradingMonitorService : Service() {
             launch { monitorWalletAccount(session) }
             launch { discover(session, events) }
         }
+
+    private suspend fun stopWhenModeBecomesIncompatible(session: BotSessionEntity) {
+        app.settings.settings.collect { settings ->
+            if (!MonitoringSessionPolicy.isModeCompatible(settings.demoMode, settings.operatingMode, session.mode)) {
+                stopDirective.compareAndSet(null, StopDirective.ModeChanged)
+                throw IncompatibleModeException()
+            }
+        }
+    }
 
     private suspend fun discover(
         session: BotSessionEntity,
@@ -1152,18 +1165,11 @@ class TradingMonitorService : Service() {
                     val performance = paperDailyPerformance(day, now)
                     val failedAt = app.repository.latestFailedTradeAt(FAILED_TRADE_STATUSES)
                     val circuitBreaker = performance.paperCircuitBreakerState() ?: return@snapshot null
-                    PaperRiskRuntimeSnapshot(
-                        observedAt = now,
+                    paperRiskRuntimeSnapshot(
+                        now = now,
                         walletBalanceLamports = balance.lamports,
-                        openPositions = app.repository.openPositions(PAPER_POSITION_STATES),
-                        rollingTradeTimes =
-                            app.repository
-                                .tradeTimesSince(now.minus(Duration.ofHours(24)).toEpochMilli())
-                                .map(Instant::ofEpochMilli),
-                        dailyPerformance = performance,
-                        providerHealth = app.repository.providerHealth(),
-                        lastLossAt = performance.lastLossAtMillis?.let(Instant::ofEpochMilli),
-                        lastFailedTransactionAt = failedAt?.let(Instant::ofEpochMilli),
+                        performance = performance,
+                        failedAtMillis = failedAt,
                         circuitBreaker = circuitBreaker,
                     )
                 },
@@ -1198,18 +1204,11 @@ class TradingMonitorService : Service() {
                         if (requestedSessionId != sessionId || requestedNow != now) {
                             null
                         } else {
-                            PaperRiskRuntimeSnapshot(
-                                observedAt = now,
+                            paperRiskRuntimeSnapshot(
+                                now = now,
                                 walletBalanceLamports = baseline.snapshot.walletBalance.value,
-                                openPositions = app.repository.openPositions(PAPER_POSITION_STATES),
-                                rollingTradeTimes =
-                                    app.repository
-                                        .tradeTimesSince(now.minus(Duration.ofHours(24)).toEpochMilli())
-                                        .map(Instant::ofEpochMilli),
-                                dailyPerformance = performance,
-                                providerHealth = app.repository.providerHealth(),
-                                lastLossAt = performance.lastLossAtMillis?.let(Instant::ofEpochMilli),
-                                lastFailedTransactionAt = failedAt?.let(Instant::ofEpochMilli),
+                                performance = performance,
+                                failedAtMillis = failedAt,
                                 circuitBreaker = circuitBreaker,
                             )
                         }
@@ -1218,6 +1217,27 @@ class TradingMonitorService : Service() {
             ).facts(sessionId, risk, now) ?: return null
         return current.copy(approximateTradeEur = baseline.approximateTradeEur)
     }
+
+    private suspend fun paperRiskRuntimeSnapshot(
+        now: Instant,
+        walletBalanceLamports: Long,
+        performance: DailyPerformanceEntity,
+        failedAtMillis: Long?,
+        circuitBreaker: CircuitBreakerState,
+    ) = PaperRiskRuntimeSnapshot(
+        observedAt = now,
+        walletBalanceLamports = walletBalanceLamports,
+        openPositions = app.repository.openPositions(PAPER_POSITION_STATES),
+        rollingTradeTimes =
+            app.repository
+                .tradeTimesSince(now.minus(Duration.ofHours(24)).toEpochMilli())
+                .map(Instant::ofEpochMilli),
+        dailyPerformance = performance,
+        providerHealth = app.repository.providerHealth(),
+        lastLossAt = performance.lastLossAtMillis?.let(Instant::ofEpochMilli),
+        lastFailedTransactionAt = failedAtMillis?.let(Instant::ofEpochMilli),
+        circuitBreaker = circuitBreaker,
+    )
 
     private suspend fun paperDailyPerformance(
         day: Long,
@@ -1535,7 +1555,7 @@ class TradingMonitorService : Service() {
 
     private suspend fun requiredProviderKeysConfigured(): Boolean =
         REQUIRED_KEY_PROVIDERS.all { provider ->
-            !app.sessionApiKeys.apiKeyFor(provider).isNullOrBlank()
+            !app.sessionApiKeys.apiKeyFor(provider).isNullOrBlank() || app.restoreSessionApiKey(provider)
         }
 
     private suspend fun requiredProvidersHealthy(
@@ -1557,8 +1577,7 @@ class TradingMonitorService : Service() {
     }
 
     private suspend fun recordPumpPortalHealthy(nowMillis: Long) {
-        val previous = app.database.providerHealthDao().byProvider(ProviderId.PUMP_PORTAL.name)
-        app.repository.saveProviderHealth(
+        app.repository.updateProviderHealth(ProviderId.PUMP_PORTAL.name) { previous ->
             ProviderHealthEntity(
                 provider = ProviderId.PUMP_PORTAL.name,
                 state = "HEALTHY",
@@ -1569,8 +1588,8 @@ class TradingMonitorService : Service() {
                 retryAfterMillis = null,
                 lastFailureCode = null,
                 updatedAtMillis = nowMillis,
-            ),
-        )
+            )
+        }
     }
 
     private suspend fun recordProviderResult(
@@ -1579,68 +1598,69 @@ class TradingMonitorService : Service() {
         startedAtMillis: Long,
     ) {
         val now = System.currentTimeMillis()
-        val previous = app.database.providerHealthDao().byProvider(provider.name)
-        when (result) {
-            is ProviderResult.Success -> {
-                app.repository.saveProviderHealth(
-                    ProviderHealthEntity(
-                        provider = provider.name,
-                        state = "HEALTHY",
-                        consecutiveFailures = 0,
-                        lastSuccessAtMillis = result.receivedAtMillis,
-                        lastFailureAtMillis = previous?.lastFailureAtMillis,
-                        latencyMillis = (now - startedAtMillis).coerceAtLeast(0),
-                        retryAfterMillis = null,
-                        lastFailureCode = null,
-                        updatedAtMillis = now,
-                    ),
-                )
-            }
+        val health =
+            app.repository.updateProviderHealth(provider.name) { previous ->
+                when (result) {
+                    is ProviderResult.Success -> {
+                        ProviderHealthEntity(
+                            provider = provider.name,
+                            state = "HEALTHY",
+                            consecutiveFailures = 0,
+                            lastSuccessAtMillis = result.receivedAtMillis,
+                            lastFailureAtMillis = previous?.lastFailureAtMillis,
+                            latencyMillis = (now - startedAtMillis).coerceAtLeast(0),
+                            retryAfterMillis = null,
+                            lastFailureCode = null,
+                            updatedAtMillis = now,
+                        )
+                    }
 
-            is ProviderResult.Failure -> {
-                val failures = (previous?.consecutiveFailures ?: 0) + 1
-                app.repository.saveProviderHealth(
-                    ProviderHealthEntity(
-                        provider = provider.name,
-                        state =
-                            if (failures >= PROVIDER_UNAVAILABLE_FAILURES) {
-                                "UNAVAILABLE"
-                            } else {
-                                "DEGRADED"
-                            },
-                        consecutiveFailures = failures,
-                        lastSuccessAtMillis = previous?.lastSuccessAtMillis,
-                        lastFailureAtMillis = now,
-                        latencyMillis = (now - startedAtMillis).coerceAtLeast(0),
-                        retryAfterMillis = result.error.retryAfterMillis,
-                        lastFailureCode = result.error.redactedCode(),
-                        updatedAtMillis = now,
-                    ),
-                )
+                    is ProviderResult.Failure -> {
+                        val failures = (previous?.consecutiveFailures ?: 0) + 1
+                        ProviderHealthEntity(
+                            provider = provider.name,
+                            state =
+                                if (failures >= PROVIDER_UNAVAILABLE_FAILURES) {
+                                    "UNAVAILABLE"
+                                } else {
+                                    "DEGRADED"
+                                },
+                            consecutiveFailures = failures,
+                            lastSuccessAtMillis = previous?.lastSuccessAtMillis,
+                            lastFailureAtMillis = now,
+                            latencyMillis = (now - startedAtMillis).coerceAtLeast(0),
+                            retryAfterMillis = result.error.retryAfterMillis,
+                            lastFailureCode = result.error.redactedCode(),
+                            updatedAtMillis = now,
+                        )
+                    }
+                }
+            }
+        if (result is ProviderResult.Failure) {
+            val failures = health.consecutiveFailures
+            recordEvent(
+                severity = if (failures >= PROVIDER_UNAVAILABLE_FAILURES) "ERROR" else "WARN",
+                category = "PROVIDER",
+                code =
+                    if (failures >= PROVIDER_UNAVAILABLE_FAILURES) {
+                        "PROVIDER_UNAVAILABLE"
+                    } else {
+                        result.error.redactedCode()
+                    },
+                relatedId = provider.name,
+                nowMillis = now,
+            )
+            if (
+                failures >= PROVIDER_UNAVAILABLE_FAILURES &&
+                app.repository.openPositions(PAPER_POSITION_STATES).isNotEmpty()
+            ) {
                 recordEvent(
-                    severity = if (failures >= PROVIDER_UNAVAILABLE_FAILURES) "ERROR" else "WARN",
-                    category = "PROVIDER",
-                    code =
-                        if (failures >= PROVIDER_UNAVAILABLE_FAILURES) {
-                            "PROVIDER_UNAVAILABLE"
-                        } else {
-                            result.error.redactedCode()
-                        },
+                    severity = "ERROR",
+                    category = "RISK",
+                    code = "OPEN_POSITION_MONITORING_LOST",
                     relatedId = provider.name,
                     nowMillis = now,
                 )
-                if (
-                    failures >= PROVIDER_UNAVAILABLE_FAILURES &&
-                    app.repository.openPositions(PAPER_POSITION_STATES).isNotEmpty()
-                ) {
-                    recordEvent(
-                        severity = "ERROR",
-                        category = "RISK",
-                        code = "OPEN_POSITION_MONITORING_LOST",
-                        relatedId = provider.name,
-                        nowMillis = now,
-                    )
-                }
             }
         }
         activeSessionSnapshot.get()?.let { refreshForegroundNotification(it) }
@@ -1652,8 +1672,7 @@ class TradingMonitorService : Service() {
         willRetry: Boolean,
         nowMillis: Long,
     ) {
-        val previous = app.database.providerHealthDao().byProvider(ProviderId.PUMP_PORTAL.name)
-        app.repository.saveProviderHealth(
+        app.repository.updateProviderHealth(ProviderId.PUMP_PORTAL.name) { previous ->
             ProviderHealthEntity(
                 provider = ProviderId.PUMP_PORTAL.name,
                 state = if (willRetry) "DEGRADED" else "UNAVAILABLE",
@@ -1664,8 +1683,8 @@ class TradingMonitorService : Service() {
                 retryAfterMillis = error.retryAfterMillis,
                 lastFailureCode = error.redactedCode(),
                 updatedAtMillis = nowMillis,
-            ),
-        )
+            )
+        }
         recordEvent(
             severity = if (willRetry) "WARN" else "ERROR",
             category = "PROVIDER",
@@ -1751,6 +1770,7 @@ class TradingMonitorService : Service() {
         foregroundModel.updateAndGet { current ->
             current.copy(
                 sessionStatus = if (paused) STATUS_PAUSED else current.sessionStatus,
+                sessionPnlLamports = if (paused) null else current.sessionPnlLamports,
                 nowMillis = System.currentTimeMillis(),
             )
         }
@@ -1763,20 +1783,20 @@ class TradingMonitorService : Service() {
     }
 
     private suspend fun refreshForegroundNotification(session: BotSessionEntity) {
+        val now = System.currentTimeMillis()
         val positions =
             app.repository
                 .openPositions(PAPER_POSITION_STATES)
                 .filter { it.sessionId == session.id }
+        val maximumQuoteAgeMillis =
+            app.database
+                .configDao()
+                .riskByVersion(session.riskVersion)
+                ?.minimumDataFreshnessMillis
         val pnl =
-            runCatching {
-                positions
-                    .mapNotNull { position ->
-                        position.latestSellQuoteLamports?.let { quote ->
-                            Math.subtractExact(quote, position.netInputLamports)
-                        }
-                    }.takeIf { it.isNotEmpty() }
-                    ?.fold(0L) { total, value -> Math.addExact(total, value) }
-            }.getOrNull()
+            maximumQuoteAgeMillis?.let {
+                sessionPnlLamports(positions, now, it)
+            }
         val lastMarketSuccess =
             app.repository
                 .providerHealth()
@@ -1790,7 +1810,7 @@ class TradingMonitorService : Service() {
                 openPositionCount = positions.size,
                 sessionPnlLamports = pnl,
                 lastMarketSuccessAtMillis = lastMarketSuccess,
-                nowMillis = System.currentTimeMillis(),
+                nowMillis = now,
             )
         foregroundModel.set(model)
         ServiceCompat.startForeground(
@@ -1871,6 +1891,8 @@ class TradingMonitorService : Service() {
         data object BufferFull : DiscoveryDisconnect
     }
 
+    private class IncompatibleModeException : RuntimeException()
+
     private sealed class StopDirective(
         val reason: String,
         val sessionStatus: String,
@@ -1883,6 +1905,8 @@ class TradingMonitorService : Service() {
         data object PositionsClosed : StopDirective("POSITIONS_CLOSED", STATUS_STOPPED)
 
         data object InvalidStart : StopDirective("INVALID_START", STATUS_NEEDS_ATTENTION)
+
+        data object ModeChanged : StopDirective("MODE_CHANGED", STATUS_NEEDS_ATTENTION)
 
         data object RestartNotRequired : StopDirective("RESTART_NOT_REQUIRED", STATUS_STOPPED)
 
@@ -1992,9 +2016,6 @@ private val ForegroundStatus.titleResource: Int
             ForegroundStatus.PROTECTING_POSITION -> R.string.monitor_status_protecting
             ForegroundStatus.NEEDS_ATTENTION -> R.string.monitor_status_attention
         }
-
-private fun AppSettings.walletAccessMode(): WalletAccessMode =
-    if (unattendedMode && !secureSession) WalletAccessMode.UNATTENDED else WalletAccessMode.SECURE_SESSION
 
 private fun RiskConfigEntity.isValidForMonitoring(): Boolean =
     maximumTradeLamports > 0 &&

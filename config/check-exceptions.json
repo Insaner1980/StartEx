@@ -13,7 +13,10 @@
       "tracking": "local-review:startex-mobsf-target-sdk",
       "sourcePath": "app/build.gradle.kts",
       "selector": "targetSdk = 37",
-      "findingPath": "app/src/main/AndroidManifest.xml"
+      "findingPath": "app/src/main/AndroidManifest.xml",
+      "findingSelectors": [
+        "Activity exported, targetSdk<29 and launchMode != singleInstance or taskAffinity is not empty"
+      ]
     },
     {
       "id": "startex-mobsf-hardcoded-database-test-keys",
@@ -27,7 +30,13 @@
       "tracking": "local-review:startex-mobsf-hardcoded-database-test-keys",
       "sourcePath": "app/src/androidTest/java/com/finnvek/startex/data/local/StartExDatabaseTest.kt",
       "selector": "idempotencyKey = \"paper-history-$index\"",
-      "findingPath": "app/src/androidTest/java/com/finnvek/startex/data/local/StartExDatabaseTest.kt"
+      "findingPath": "app/src/androidTest/java/com/finnvek/startex/data/local/StartExDatabaseTest.kt",
+      "findingSelectors": [
+        "key = \"key-$id\"",
+        "key = \"paper-history-$index\"",
+        "key = \"paper-history-cost-blocked\"",
+        "key = \"send-1\""
+      ]
     },
     {
       "id": "startex-mobsf-hardcoded-notification-key",
@@ -41,7 +50,8 @@
       "tracking": "local-review:startex-mobsf-hardcoded-notification-key",
       "sourcePath": "app/src/main/java/com/finnvek/startex/service/ServiceNotificationPolicy.kt",
       "selector": "val key = \"${kind.name}:$subject\"",
-      "findingPath": "app/src/main/java/com/finnvek/startex/service/ServiceNotificationPolicy.kt"
+      "findingPath": "app/src/main/java/com/finnvek/startex/service/ServiceNotificationPolicy.kt",
+      "findingSelectors": ["key = \"${kind.name}:$subject\""]
     },
     {
       "id": "startex-mobsf-hardcoded-paper-candidate-key",
@@ -55,7 +65,10 @@
       "tracking": "local-review:startex-mobsf-hardcoded-paper-candidate-key",
       "sourcePath": "app/src/main/java/com/finnvek/startex/trading/PaperCandidateCoordinator.kt",
       "selector": "idempotencyKey = \"paper:${request.sessionId}:${request.candidate.mint}:${request.strategy.version}:BUY\"",
-      "findingPath": "app/src/main/java/com/finnvek/startex/trading/PaperCandidateCoordinator.kt"
+      "findingPath": "app/src/main/java/com/finnvek/startex/trading/PaperCandidateCoordinator.kt",
+      "findingSelectors": [
+        "key = \"paper:${request.sessionId}:${request.candidate.mint}:${request.strategy.version}:BUY\""
+      ]
     },
     {
       "id": "startex-mobsf-hardcoded-paper-position-keys",
@@ -69,7 +82,11 @@
       "tracking": "local-review:startex-mobsf-hardcoded-paper-position-keys",
       "sourcePath": "app/src/main/java/com/finnvek/startex/trading/PaperPositionMonitor.kt",
       "selector": "idempotencyKey = \"paper:$id:SELL:attempt:$attempt\"",
-      "findingPath": "app/src/main/java/com/finnvek/startex/trading/PaperPositionMonitor.kt"
+      "findingPath": "app/src/main/java/com/finnvek/startex/trading/PaperPositionMonitor.kt",
+      "findingSelectors": [
+        "key = \"paper:$id:SELL:attempt:$attempt\"",
+        "key = \"paper:${position.id}:SELL\""
+      ]
     },
     {
       "id": "startex-mobsf-hardcoded-history-test-keys",
@@ -83,7 +100,8 @@
       "tracking": "local-review:startex-mobsf-hardcoded-history-test-keys",
       "sourcePath": "app/src/test/java/com/finnvek/startex/data/HistoryExporterTest.kt",
       "selector": "idempotencyKey = \"intent-key-1\"",
-      "findingPath": "app/src/test/java/com/finnvek/startex/data/HistoryExporterTest.kt"
+      "findingPath": "app/src/test/java/com/finnvek/startex/data/HistoryExporterTest.kt",
+      "findingSelectors": ["key = \"intent-key-1\""]
     },
     {
       "id": "startex-mobsf-hardcoded-reconciler-test-key",
@@ -97,7 +115,8 @@
       "tracking": "local-review:startex-mobsf-hardcoded-reconciler-test-key",
       "sourcePath": "app/src/test/java/com/finnvek/startex/trading/TransactionReconcilerTest.kt",
       "selector": "idempotencyKey = \"position-1-entry\"",
-      "findingPath": "app/src/test/java/com/finnvek/startex/trading/TransactionReconcilerTest.kt"
+      "findingPath": "app/src/test/java/com/finnvek/startex/trading/TransactionReconcilerTest.kt",
+      "findingSelectors": ["key = \"position-1-entry\""]
     },
     {
       "id": "startex-mobsf-hardcoded-manual-transfer-test-key",
@@ -111,7 +130,8 @@
       "tracking": "local-review:startex-mobsf-hardcoded-manual-transfer-test-key",
       "sourcePath": "app/src/test/java/com/finnvek/startex/ui/ManualTransferTransactionTest.kt",
       "selector": "idempotencyKey = \"idempotency-key\"",
-      "findingPath": "app/src/test/java/com/finnvek/startex/ui/ManualTransferTransactionTest.kt"
+      "findingPath": "app/src/test/java/com/finnvek/startex/ui/ManualTransferTransactionTest.kt",
+      "findingSelectors": ["key = \"idempotency-key\""]
     }
   ]
 }

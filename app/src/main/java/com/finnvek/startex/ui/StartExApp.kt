@@ -29,27 +29,22 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.viewModel
 import com.finnvek.startex.R
 import com.finnvek.startex.device.DeviceHealthEntryPolicy
 import com.finnvek.startex.service.TradingMonitorService
@@ -70,11 +65,43 @@ import com.finnvek.startex.ui.theme.StartExRed
 import com.finnvek.startex.ui.theme.StartExSurface
 import android.provider.Settings as AndroidSettings
 
-private enum class FullScreenPanel {
+internal enum class FullScreenPanel {
     None,
     Preflight,
     Providers,
     Configuration,
+}
+
+internal enum class TopLevelRoute {
+    Loading,
+    WalletSetup,
+    SecureSessionLock,
+    WalletOverlay,
+    Providers,
+    Configuration,
+    Onboarding,
+    Preflight,
+    Main,
+}
+
+internal fun topLevelRoute(
+    state: PersistedAppState,
+    walletSetup: WalletSetupState,
+    walletOverlay: WalletOverlay,
+    panel: FullScreenPanel,
+): TopLevelRoute {
+    val walletLocked = !state.demoMode && state.walletAddress != null && !state.walletUnlocked
+    return when {
+        !state.loaded -> TopLevelRoute.Loading
+        walletSetup !is WalletSetupState.Closed -> TopLevelRoute.WalletSetup
+        walletLocked -> TopLevelRoute.SecureSessionLock
+        walletOverlay !is WalletOverlay.None -> TopLevelRoute.WalletOverlay
+        panel == FullScreenPanel.Providers -> TopLevelRoute.Providers
+        panel == FullScreenPanel.Configuration -> TopLevelRoute.Configuration
+        !state.onboardingComplete -> TopLevelRoute.Onboarding
+        panel == FullScreenPanel.Preflight -> TopLevelRoute.Preflight
+        else -> TopLevelRoute.Main
+    }
 }
 
 private data class DestinationItem(
@@ -93,60 +120,22 @@ private val destinationItems =
     )
 
 @Composable
-fun StartExApp(viewModel: StartExViewModel = viewModel()) {
+fun StartExApp(
+    viewModel: StartExViewModel,
+    onAuthenticate: (StartExUiEvent.Authenticate, BiometricPrompt.PromptInfo) -> Unit,
+) {
     val context = LocalContext.current
-    val lifecycleOwner = LocalLifecycleOwner.current
+    val currentAuthenticate by rememberUpdatedState(onAuthenticate)
     val state by viewModel.state.collectAsStateWithLifecycle()
     val walletSetup by viewModel.walletSetup.collectAsStateWithLifecycle()
     val walletOverlay by viewModel.walletOverlay.collectAsStateWithLifecycle()
     val walletTransfer by viewModel.walletTransfer.collectAsStateWithLifecycle()
     val configurationSave by viewModel.configurationSave.collectAsStateWithLifecycle()
-    var authenticationInProgress by remember { mutableStateOf(false) }
-
-    DisposableEffect(lifecycleOwner, viewModel, state.secureSession, authenticationInProgress) {
-        val observer =
-            LifecycleEventObserver { _, event ->
-                if (
-                    event == Lifecycle.Event.ON_STOP &&
-                    state.secureSession &&
-                    !authenticationInProgress
-                ) {
-                    viewModel.lockWallet()
-                }
-            }
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
-    }
-
     LaunchedEffect(viewModel, context) {
         viewModel.events.collect { event ->
             when (event) {
                 is StartExUiEvent.Authenticate -> {
-                    authenticationInProgress = true
-                    authenticate(
-                        context = context,
-                        request = event,
-                        onSuccess = { request ->
-                            authenticationInProgress = false
-                            viewModel.onAuthenticationSucceeded(request)
-                            if (
-                                state.secureSession &&
-                                !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-                            ) {
-                                viewModel.lockWallet()
-                            }
-                        },
-                        onFailure = {
-                            authenticationInProgress = false
-                            viewModel.onAuthenticationFailed()
-                            if (
-                                state.secureSession &&
-                                !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)
-                            ) {
-                                viewModel.lockWallet()
-                            }
-                        },
-                    )
+                    currentAuthenticate(event, authenticationPromptInfo(context, event))
                 }
 
                 StartExUiEvent.StartMonitoringService -> {
@@ -182,7 +171,9 @@ fun StartExApp(viewModel: StartExViewModel = viewModel()) {
                 }
 
                 is StartExUiEvent.ShareText -> {
-                    shareText(context, event)
+                    if (viewModel.historyExportAllowed) {
+                        shareText(context, event)
+                    }
                 }
             }
         }
@@ -247,12 +238,12 @@ private fun StartExContent(
         )
 
     Box(modifier = Modifier.fillMaxSize()) {
-        when {
-            !state.loaded -> {
+        when (topLevelRoute(state, walletSetup, walletOverlay, panel)) {
+            TopLevelRoute.Loading -> {
                 LoadingScreen()
             }
 
-            walletSetup !is WalletSetupState.Closed -> {
+            TopLevelRoute.WalletSetup -> {
                 WalletFlowScreen(
                     state = walletSetup,
                     onMnemonicSave = viewModel::showBackupChallenge,
@@ -263,7 +254,17 @@ private fun StartExContent(
                 )
             }
 
-            walletOverlay !is WalletOverlay.None -> {
+            TopLevelRoute.SecureSessionLock -> {
+                LockScreen(
+                    address = requireNotNull(state.walletAddress),
+                    recoveryRequired = state.monitorState == MonitorState.NeedsAttention,
+                    onUnlock = viewModel::requestWalletUnlock,
+                    onRestore = viewModel::beginWalletRestore,
+                    onStop = { stopConfirmationOpen = true },
+                )
+            }
+
+            TopLevelRoute.WalletOverlay -> {
                 WalletOverlayScreen(
                     overlay = walletOverlay,
                     state = state,
@@ -280,7 +281,7 @@ private fun StartExContent(
                 )
             }
 
-            panel == FullScreenPanel.Providers -> {
+            TopLevelRoute.Providers -> {
                 ProviderSetupScreen(
                     configuredProviders = state.configuredProviders,
                     activatedProviders = state.activatedProviders,
@@ -292,7 +293,7 @@ private fun StartExContent(
                 )
             }
 
-            panel == FullScreenPanel.Configuration -> {
+            TopLevelRoute.Configuration -> {
                 ConfigurationEditorScreen(
                     state = state,
                     saveState = configurationSave,
@@ -304,7 +305,7 @@ private fun StartExContent(
                 )
             }
 
-            !state.onboardingComplete -> {
+            TopLevelRoute.Onboarding -> {
                 OnboardingScreen(
                     state = state,
                     onCreateWallet = viewModel::beginWalletCreation,
@@ -318,17 +319,7 @@ private fun StartExContent(
                 )
             }
 
-            !state.demoMode && state.walletAddress != null && !state.walletUnlocked -> {
-                LockScreen(
-                    address = state.walletAddress,
-                    recoveryRequired = state.monitorState == MonitorState.NeedsAttention,
-                    onUnlock = viewModel::requestWalletUnlock,
-                    onRestore = viewModel::beginWalletRestore,
-                    onStop = { stopConfirmationOpen = true },
-                )
-            }
-
-            panel == FullScreenPanel.Preflight -> {
+            TopLevelRoute.Preflight -> {
                 PreflightScreen(
                     state = preflight,
                     mode = state.mode,
@@ -347,7 +338,7 @@ private fun StartExContent(
                 )
             }
 
-            else -> {
+            TopLevelRoute.Main -> {
                 MainNavigation(
                     state = state,
                     destination = destination,
@@ -546,68 +537,25 @@ private fun LoadingScreen() {
     }
 }
 
-private fun authenticate(
+private fun authenticationPromptInfo(
     context: Context,
     request: StartExUiEvent.Authenticate,
-    onSuccess: (StartExUiEvent.Authenticate) -> Unit,
-    onFailure: () -> Unit,
-) {
-    val activity =
-        context as? FragmentActivity ?: run {
-            onFailure()
-            return
-        }
-    val prompt =
-        BiometricPrompt(
-            activity,
-            ContextCompat.getMainExecutor(context),
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                    val authenticatedRequest =
-                        request.operation?.let { operation ->
-                            val authenticatedOperation =
-                                result.cryptoObject?.let(operation::bindAuthenticated)
-                            if (authenticatedOperation == null) {
-                                onFailure()
-                                return
-                            }
-                            request.copy(operation = authenticatedOperation)
-                        } ?: request
-                    onSuccess(authenticatedRequest)
-                }
-
-                override fun onAuthenticationError(
-                    errorCode: Int,
-                    errString: CharSequence,
-                ) {
-                    onFailure()
-                }
-
-                override fun onAuthenticationFailed() = Unit
-            },
-        )
-    val promptInfo =
-        BiometricPrompt.PromptInfo
-            .Builder()
-            .setTitle(context.getString(authenticationTitle(request.purpose)))
-            .setSubtitle(context.getString(R.string.authentication_subtitle))
-            .apply {
-                if (request.operation == null) {
-                    setAllowedAuthenticators(
-                        BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                            BiometricManager.Authenticators.DEVICE_CREDENTIAL,
-                    )
-                } else {
-                    setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-                    setNegativeButtonText(context.getString(R.string.cancel))
-                }
-            }.build()
-    if (request.operation == null) {
-        prompt.authenticate(promptInfo)
-    } else {
-        prompt.authenticate(promptInfo, request.operation.cryptoObject)
-    }
-}
+): BiometricPrompt.PromptInfo =
+    BiometricPrompt.PromptInfo
+        .Builder()
+        .setTitle(context.getString(authenticationTitle(request.purpose)))
+        .setSubtitle(context.getString(R.string.authentication_subtitle))
+        .apply {
+            if (request.operation == null) {
+                setAllowedAuthenticators(
+                    BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                        BiometricManager.Authenticators.DEVICE_CREDENTIAL,
+                )
+            } else {
+                setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+                setNegativeButtonText(context.getString(R.string.cancel))
+            }
+        }.build()
 
 private fun authenticationTitle(purpose: AuthenticationPurpose): Int =
     when (purpose) {

@@ -10,6 +10,7 @@ import com.finnvek.startex.network.RpcFeeForMessage
 import com.finnvek.startex.network.RpcLatestBlockhash
 import com.finnvek.startex.network.RpcSignatureStatus
 import com.finnvek.startex.network.RpcSimulation
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -23,6 +24,49 @@ import org.sol4k.PublicKey
 import java.util.Base64
 
 class WalletTransferCoordinatorTest {
+    @Test
+    fun `cancellation propagates from preparation and write ahead persistence`() =
+        runTest {
+            val cancellingProvider =
+                object : HeliusRpcProvider by MockHeliusRpcProvider() {
+                    override suspend fun getFeeForMessage(messageBase64: String): ProviderResult<RpcFeeForMessage?> =
+                        throw CancellationException("cancel preparation")
+                }
+
+            var preparationCancelled = false
+            try {
+                WalletTransferCoordinator(cancellingProvider).prepare(
+                    sourceAddress = SOURCE,
+                    destinationAddress = DESTINATION,
+                    amountLamports = AMOUNT,
+                    feeCapLamports = FEE_CAP,
+                    reserveLamports = RESERVE,
+                )
+            } catch (_: CancellationException) {
+                preparationCancelled = true
+            }
+            assertTrue(preparationCancelled)
+
+            val coordinator = WalletTransferCoordinator(MockHeliusRpcProvider())
+            val prepared =
+                coordinator.prepare(
+                    sourceAddress = SOURCE,
+                    destinationAddress = DESTINATION,
+                    amountLamports = AMOUNT,
+                    feeCapLamports = FEE_CAP,
+                    reserveLamports = RESERVE,
+                ) as SolTransferResult.Prepared
+            var writeAheadCancelled = false
+            try {
+                coordinator.submit(prepared.transfer, RecordingSigner(SOURCE, mutableListOf())) {
+                    throw CancellationException("cancel write ahead")
+                }
+            } catch (_: CancellationException) {
+                writeAheadCancelled = true
+            }
+            assertTrue(writeAheadCancelled)
+        }
+
     @Test
     fun `prepare constructs and simulates a known-good legacy System Program transfer`() =
         runTest {
@@ -297,6 +341,7 @@ class WalletTransferCoordinatorTest {
             assertEquals(1, signer.signCount)
         }
 
+    // CPD-OFF
     @Test
     fun `write ahead failure prevents broadcast`() =
         runTest {
@@ -330,6 +375,7 @@ class WalletTransferCoordinatorTest {
             )
         }
 
+    // CPD-ON
     private fun assertFailure(
         result: SolTransferResult,
         expectedReason: SolTransferFailureReason,

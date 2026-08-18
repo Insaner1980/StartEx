@@ -1,5 +1,6 @@
 package com.finnvek.startex.ui
 
+import com.finnvek.startex.R
 import com.finnvek.startex.wallet.SignedSolTransfer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -42,5 +43,19 @@ class ManualTransferTransactionTest {
         )
         assertEquals("MANUAL_TRANSFER_CONFIRMED", manualTransferNotificationCode("FINALIZED"))
         assertEquals("MANUAL_TRANSFER_FAILED", manualTransferNotificationCode("CHAIN_REJECTED"))
+    }
+
+    @Test
+    fun manualTransferStateGateRequiresStoppedOrPausedMonitoringWithoutOpenPositions() {
+        assertNull(manualTransferStateBlockMessage(MonitorState.Stopped, hasOpenPositions = false))
+        assertNull(manualTransferStateBlockMessage(MonitorState.Paused, hasOpenPositions = false))
+        assertEquals(
+            R.string.transfer_pause_required,
+            manualTransferStateBlockMessage(MonitorState.Running, hasOpenPositions = false),
+        )
+        assertEquals(
+            R.string.transfer_open_positions_blocked,
+            manualTransferStateBlockMessage(MonitorState.Paused, hasOpenPositions = true),
+        )
     }
 }

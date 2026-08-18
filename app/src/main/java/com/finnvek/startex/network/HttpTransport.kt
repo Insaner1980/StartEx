@@ -1,11 +1,14 @@
 package com.finnvek.startex.network
 
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.suspendCancellableCoroutine
+import okhttp3.Call
+import okhttp3.Callback
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.Response
 import okhttp3.ResponseBody
 import java.io.IOException
+import kotlin.coroutines.resumeWithException
 
 data class HttpResponse(
     val statusCode: Int,
@@ -26,24 +29,44 @@ class OkHttpTransport(
     }
 
     override suspend fun execute(request: Request): HttpResponse =
-        withContext(Dispatchers.IO) {
-            client.newCall(request).execute().use { response ->
-                HttpResponse(
-                    statusCode = response.code,
-                    body = readBoundedBody(response.body, maximumResponseBytes),
-                    headers =
-                        response
-                            .header("Retry-After")
-                            ?.let { retryAfter -> mapOf("Retry-After" to retryAfter) }
-                            .orEmpty(),
-                )
-            }
+        client.newCall(request).awaitResponse().use { response ->
+            HttpResponse(
+                statusCode = response.code,
+                body = readBoundedBody(response.body, maximumResponseBytes),
+                headers =
+                    response
+                        .header("Retry-After")
+                        ?.let { retryAfter -> mapOf("Retry-After" to retryAfter) }
+                        .orEmpty(),
+            )
         }
 
     private companion object {
         const val DEFAULT_MAXIMUM_RESPONSE_BYTES = 2L * 1_024 * 1_024
     }
 }
+
+private suspend fun Call.awaitResponse(): Response =
+    suspendCancellableCoroutine { continuation ->
+        continuation.invokeOnCancellation { cancel() }
+        enqueue(
+            object : Callback {
+                override fun onFailure(
+                    call: Call,
+                    e: IOException,
+                ) {
+                    continuation.resumeWithException(e)
+                }
+
+                override fun onResponse(
+                    call: Call,
+                    response: Response,
+                ) {
+                    continuation.resume(response) { _, rejectedResponse, _ -> rejectedResponse.close() }
+                }
+            },
+        )
+    }
 
 class ResponseTooLargeException : IOException("Provider response exceeded the configured limit")
 

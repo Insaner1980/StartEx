@@ -39,18 +39,18 @@ jobs:
         run: sdkmanager "platform-tools" "platforms;android-37.0" "build-tools;37.0.0"
 
       - name: Set up Gradle
-        uses: gradle/actions/setup-gradle@3f131e8634966bd73d06cc69884922b02e6faf92 # v6.2.0
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
 
       - name: Initialize CodeQL
-        uses: github/codeql-action/init@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
+        uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           languages: java-kotlin
           build-mode: manual
 
       - name: Build Android sources for CodeQL
-        run: ./gradlew clean :app:assembleDebug -Pkotlin.compiler.execution.strategy=out-of-process --dependency-verification lenient --no-daemon --console=plain --no-build-cache
+        run: ./gradlew clean :app:assembleDebug -Pkotlin.compiler.execution.strategy=in-process --dependency-verification strict --no-daemon --console=plain --no-build-cache
 
       - name: Analyze
-        uses: github/codeql-action/analyze@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
+        uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
         with:
           category: "/language:java-kotlin"

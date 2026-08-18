@@ -9,7 +9,7 @@
       "kind": "android-application",
       "required": true,
       "variants": ["debug", "release"],
-      "sourceSets": ["main", "test", "androidTest"]
+      "sourceSets": ["main", "debug", "test", "androidTest"]
     }
   ],
   "buildTasks": [":app:assembleDebug"],
@@ -21,8 +21,9 @@
     "detektTasks": [":app:detekt"],
     "lintTasks": [":app:lintDebug"],
     "fullLintTasks": [":app:lintDebug", ":app:lintRelease"],
-    "stabilityTasks": [],
+    "stabilityTasks": [":app:stabilityCheck"],
     "dependencyConfigurations": ["debugRuntimeClasspath", "releaseRuntimeClasspath"],
+    "dependencyLockfiles": ["app/gradle.lockfile"],
     "dependencyCheckTasks": [":app:dependencyCheckAnalyze"],
     "semgrepConfig": "config/semgrep/startex-security.yml"
   }

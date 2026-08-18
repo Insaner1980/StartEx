@@ -95,6 +95,7 @@ class JupiterSwapClientTest {
             assertNull((result as ProviderResult.Success).value.unsignedTransactionBase64)
         }
 
+    // CPD-OFF
     @Test
     fun `response above the requested slippage cap fails closed`() =
         runTest {
@@ -144,6 +145,7 @@ class JupiterSwapClientTest {
             assertEquals("feeBps", (result as ProviderResult.Failure).error.invalidField)
         }
 
+    // CPD-ON
     @Test
     fun `execute serializes the signed transaction and request id`() =
         runTest {

@@ -2,6 +2,8 @@ package com.finnvek.startex.ui
 
 import com.finnvek.startex.bootstrap.DefaultConfiguration
 import com.finnvek.startex.data.local.BotSessionEntity
+import com.finnvek.startex.data.local.ProviderHealthEntity
+import com.finnvek.startex.data.local.isFreshHealthy
 import com.finnvek.startex.network.ProviderId
 import com.finnvek.startex.ui.components.abbreviateAddress
 import org.junit.Assert.assertEquals
@@ -134,5 +136,26 @@ class StartExUiStateTest {
             MonitorState.Running,
             monitorStateFor(session.copy(lastHeartbeatAtMillis = 10_000), nowMillis = 100_000),
         )
+    }
+
+    @Test
+    fun providerHealthRequiresRecentRealSuccess() {
+        val health =
+            ProviderHealthEntity(
+                provider = ProviderId.HELIUS.name,
+                state = "HEALTHY",
+                consecutiveFailures = 0,
+                lastSuccessAtMillis = 1_000,
+                lastFailureAtMillis = null,
+                latencyMillis = 10,
+                retryAfterMillis = null,
+                lastFailureCode = null,
+                updatedAtMillis = 1_000,
+            )
+
+        assertTrue(health.isFreshHealthy(nowMillis = 1_100, maximumAgeMillis = 100))
+        assertFalse(health.isFreshHealthy(nowMillis = 1_101, maximumAgeMillis = 100))
+        assertFalse(health.copy(lastSuccessAtMillis = 1_101).isFreshHealthy(1_100, 100))
+        assertFalse(health.copy(state = "OFFLINE").isFreshHealthy(1_100, 100))
     }
 }

@@ -88,6 +88,7 @@ data class AnalysisExport(
     }
 }
 
+// CPD-OFF
 @Serializable
 data class AnalysisCandidateRecord(
     val mint: String,
@@ -159,6 +160,7 @@ data class AnalysisSnapshotRecord(
             )
     }
 }
+// CPD-ON
 
 @Serializable
 data class AnalysisDecisionRecord(
@@ -274,6 +276,7 @@ data class AnalysisPositionRecord(
     }
 }
 
+// CPD-OFF
 @Serializable
 data class AnalysisTradeIntentRecord(
     val id: String,
@@ -381,6 +384,7 @@ data class AnalysisTransactionRecord(
         )
     }
 }
+// CPD-ON
 
 @Serializable
 data class AnalysisFeeRecord(

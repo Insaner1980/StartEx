@@ -14,6 +14,7 @@ import com.finnvek.startex.ui.screens.ConfigurationEditorScreen
 import com.finnvek.startex.ui.screens.HistoryScreen
 import com.finnvek.startex.ui.screens.OnboardingScreen
 import com.finnvek.startex.ui.screens.PreflightScreen
+import com.finnvek.startex.ui.screens.WalletFlowScreen
 import com.finnvek.startex.ui.screens.WalletOverlayScreen
 import com.finnvek.startex.ui.theme.StartExTheme
 import org.junit.Assert.assertTrue
@@ -72,6 +73,36 @@ class StartExComposeUiTest {
     }
 
     @Test
+    fun restoredWalletRequiresDedicatedAndOfflineBackupConfirmations() {
+        compose.setContent {
+            StartExTheme {
+                WalletFlowScreen(
+                    state =
+                        WalletSetupState.ReviewWallet(
+                            publicAddress = "11111111111111111111111111111111",
+                            restored = true,
+                        ),
+                    onMnemonicSave = {},
+                    onVerifyBackup = { _ -> },
+                    onRestore = { _ -> },
+                    onSave = { _ -> },
+                    onCancel = {},
+                )
+            }
+        }
+
+        compose.onNodeWithText("Authenticate and save").assertIsNotEnabled()
+        compose
+            .onNodeWithText("This is a dedicated low-balance wallet and I understand funds can be lost.")
+            .performClick()
+        compose.onNodeWithText("Authenticate and save").assertIsNotEnabled()
+        compose
+            .onNodeWithText("I have an offline copy of this recovery phrase. StartEx cannot recover it.")
+            .performClick()
+        compose.onNodeWithText("Authenticate and save").assertIsEnabled()
+    }
+
+    @Test
     fun sendReviewNeverClaimsExecutionWhenExecutorIsUnavailable() {
         val trusted =
             TrustedAddressEntity(
@@ -107,6 +138,34 @@ class StartExComposeUiTest {
         compose.onNodeWithText("Cold wallet").assertExists()
     }
 
+    // CPD-OFF
+    @Test
+    fun receiveScreenIdentifiesMainnetForTheSharedAddress() {
+        val address = "11111111111111111111111111111111"
+        compose.setContent {
+            StartExTheme {
+                WalletOverlayScreen(
+                    overlay = WalletOverlay.Receive,
+                    state = PersistedAppState(loaded = true, walletAddress = address),
+                    transferState = WalletTransferState.Editing,
+                    trustedAddresses = emptyList(),
+                    onDismiss = {},
+                    onRefreshBalance = {},
+                    onPrepareTransfer = { _, _ -> },
+                    onSubmitTransfer = {},
+                    onResetTransfer = {},
+                    onAddTrustedAddress = { _, _, _ -> },
+                    onDeleteTrustedAddress = { _, _ -> },
+                    onUnlockTrustedAddress = { _, _ -> },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Solana mainnet").assertExists()
+        compose.onNodeWithText(address).assertExists()
+    }
+
+    // CPD-ON
     @Test
     fun historyShowsPersistedTradeFieldsInsteadOfGenericEvents() {
         val trade =

@@ -1,5 +1,6 @@
 package com.finnvek.startex.service
 
+import com.finnvek.startex.data.settings.OperatingMode
 import com.finnvek.startex.network.RetryPolicy
 import com.finnvek.startex.security.WalletAccessMode
 import org.junit.Assert.assertEquals
@@ -17,7 +18,8 @@ class MonitoringSessionPolicyTest {
     fun `paper monitoring starts before provider health is known`() {
         val action =
             MonitoringSessionPolicy.startAction(
-                paperMode = true,
+                operatingMode = OperatingMode.PAPER,
+                persistedSessionMode = null,
                 providersConfigured = true,
                 riskLimitsValid = true,
             )
@@ -29,7 +31,8 @@ class MonitoringSessionPolicyTest {
     fun `live session remains locked without an execution coordinator`() {
         val action =
             MonitoringSessionPolicy.startAction(
-                paperMode = false,
+                operatingMode = OperatingMode.LIVE,
+                persistedSessionMode = null,
                 providersConfigured = true,
                 riskLimitsValid = true,
             )
@@ -38,10 +41,34 @@ class MonitoringSessionPolicyTest {
     }
 
     @Test
+    fun `recovery rejects live and malformed persisted session modes`() {
+        listOf("LIVE", "live", "", "UNKNOWN").forEach { persistedMode ->
+            val action =
+                MonitoringSessionPolicy.startAction(
+                    operatingMode = OperatingMode.PAPER,
+                    persistedSessionMode = persistedMode,
+                    providersConfigured = true,
+                    riskLimitsValid = true,
+                )
+
+            assertEquals(SessionStartAction.LIVE_EXECUTION_LOCKED, action)
+        }
+    }
+
+    @Test
+    fun `running paper session becomes incompatible with demo or live settings`() {
+        assertTrue(MonitoringSessionPolicy.isModeCompatible(false, OperatingMode.PAPER, "PAPER"))
+        assertEquals(false, MonitoringSessionPolicy.isModeCompatible(true, OperatingMode.PAPER, "PAPER"))
+        assertEquals(false, MonitoringSessionPolicy.isModeCompatible(false, OperatingMode.LIVE, "PAPER"))
+        assertEquals(false, MonitoringSessionPolicy.isModeCompatible(false, OperatingMode.PAPER, "LIVE"))
+    }
+
+    @Test
     fun `paper monitoring stops when a required key is missing`() {
         val action =
             MonitoringSessionPolicy.startAction(
-                paperMode = true,
+                operatingMode = OperatingMode.PAPER,
+                persistedSessionMode = null,
                 providersConfigured = false,
                 riskLimitsValid = true,
             )

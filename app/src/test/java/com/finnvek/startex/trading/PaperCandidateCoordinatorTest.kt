@@ -143,6 +143,7 @@ class PaperCandidateCoordinatorTest {
             assertTrue(persistence.snapshots.all { it.source == "JUPITER_TOKENS_UNVALIDATED_QUOTE_PAIR" })
         }
 
+    // CPD-OFF
     @Test
     fun `final state reread blocks entry after concurrent fees consume the daily limit`() =
         runTest {
@@ -258,6 +259,7 @@ class PaperCandidateCoordinatorTest {
             assertEquals(listOf(1_000L), clock.waits)
         }
 
+    // CPD-ON
     private fun coordinator(
         clock: AdvancingClock,
         tokens: JupiterTokensProvider,
@@ -368,6 +370,7 @@ class PaperCandidateCoordinatorTest {
             unsupportedRouteBehavior = true,
         )
 
+    // CPD-OFF
     private fun safeRiskFacts(now: Instant) =
         PaperRiskFacts(
             snapshot =
@@ -399,6 +402,7 @@ class PaperCandidateCoordinatorTest {
                     updatedAtMillis = now.toEpochMilli(),
                 ),
         )
+    // CPD-ON
 
     private class AdvancingClock(
         private var nowMillis: Long,

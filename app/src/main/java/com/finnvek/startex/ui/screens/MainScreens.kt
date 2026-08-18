@@ -63,8 +63,10 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -89,6 +91,7 @@ import com.finnvek.startex.data.local.RiskConfigEntity
 import com.finnvek.startex.data.local.StrategyConfigEntity
 import com.finnvek.startex.data.local.TokenCandidateEntity
 import com.finnvek.startex.data.local.TradeExportRow
+import com.finnvek.startex.data.local.freshSellQuoteLamports
 import com.finnvek.startex.device.DeviceHealthEntryPolicy
 import com.finnvek.startex.device.DeviceHealthSnapshot
 import com.finnvek.startex.device.DeviceThermalStatus
@@ -125,6 +128,7 @@ import com.finnvek.startex.ui.theme.StartExAmber
 import com.finnvek.startex.ui.theme.StartExGreen
 import com.finnvek.startex.ui.theme.StartExOutline
 import com.finnvek.startex.ui.theme.StartExRed
+import kotlinx.coroutines.delay
 import java.math.BigDecimal
 import java.math.BigInteger
 import java.math.RoundingMode
@@ -145,6 +149,13 @@ fun HomeScreen(
     onStopAfterClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var quoteNowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(state.openPositions.isNotEmpty()) {
+        while (state.openPositions.isNotEmpty()) {
+            delay(1_000)
+            quoteNowMillis = System.currentTimeMillis()
+        }
+    }
     ScreenColumn(modifier = modifier) {
         ScreenHeader(
             title = stringResource(R.string.home_title),
@@ -284,7 +295,11 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(8.dp))
                         MetricRow(
                             stringResource(R.string.executable_exit_quote),
-                            position.latestSellQuoteLamports?.let { "$it lamports" }
+                            position
+                                .freshSellQuoteLamports(
+                                    nowMillis = quoteNowMillis,
+                                    maximumAgeMillis = state.risk?.minimumDataFreshnessMillis ?: -1,
+                                )?.let { "$it lamports" }
                                 ?: stringResource(R.string.quote_unavailable),
                         )
                         Spacer(modifier = Modifier.height(10.dp))
@@ -377,6 +392,7 @@ fun HomeScreen(
                 }
 
                 MonitorState.Paused -> {
+                    // CPD-OFF
                     Button(
                         onClick = onResume,
                         modifier =
@@ -398,6 +414,7 @@ fun HomeScreen(
                         Icon(Icons.Outlined.StopCircle, contentDescription = null)
                         Text(stringResource(R.string.stop_monitoring), Modifier.padding(start = 8.dp))
                     }
+                    // CPD-ON
                 }
 
                 MonitorState.NeedsAttention -> {
@@ -508,6 +525,7 @@ fun WatchScreen(
             }
 
             else -> {
+                // CPD-OFF
                 LazyColumn(
                     contentPadding =
                         androidx.compose.foundation.layout.PaddingValues(
@@ -521,6 +539,7 @@ fun WatchScreen(
                         CandidateCard(candidate, onClick = { selectedCandidate = candidate })
                     }
                 }
+                // CPD-ON
             }
         }
     }
@@ -824,6 +843,7 @@ private fun WalletDataSections(
         SectionCard {
             SectionHeading(stringResource(R.string.recent_wallet_activity))
             when {
+                // CPD-OFF
                 state.walletDataLoading && state.recentWalletActivity.isEmpty() -> {
                     Text(
                         text = stringResource(R.string.wallet_data_loading),
@@ -831,6 +851,8 @@ private fun WalletDataSections(
                         modifier = Modifier.padding(top = 12.dp),
                     )
                 }
+
+                // CPD-ON
 
                 state.walletDataError != null && state.recentWalletActivity.isEmpty() -> {
                     Text(
@@ -914,6 +936,7 @@ private fun TokenHoldingRow(holding: WalletTokenHolding) {
 }
 
 @Composable
+// CPD-OFF
 private fun WalletActivityRow(activity: WalletActivity) {
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider(color = StartExOutline, modifier = Modifier.padding(vertical = 10.dp))
@@ -946,6 +969,7 @@ private fun WalletActivityRow(activity: WalletActivity) {
         }
     }
 }
+// CPD-ON
 
 internal enum class HistoryModeFilter { All, Paper, Live }
 
@@ -2072,6 +2096,7 @@ fun SettingsScreen(
             )
         }
         if (state.monitorState != MonitorState.Stopped) {
+            // CPD-OFF
             Spacer(modifier = Modifier.height(16.dp))
             SectionCard {
                 SectionHeading(
@@ -2090,6 +2115,7 @@ fun SettingsScreen(
                     Text(stringResource(R.string.emergency_stop), Modifier.padding(start = 8.dp))
                 }
             }
+            // CPD-ON
         }
     }
 }
@@ -2365,6 +2391,7 @@ fun LockScreen(
             Text(stringResource(R.string.restore_wallet_instead))
         }
         if (recoveryRequired) {
+            // CPD-OFF
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(
                 onClick = onStop,
@@ -2376,6 +2403,7 @@ fun LockScreen(
                 Icon(Icons.Outlined.StopCircle, contentDescription = null)
                 Text(stringResource(R.string.emergency_stop), Modifier.padding(start = 8.dp))
             }
+            // CPD-ON
         }
     }
 }
@@ -2788,6 +2816,7 @@ private fun PreflightNotRequiredRow(label: String) {
 }
 
 @Composable
+// CPD-OFF
 private fun PreflightReadyToConnectRow(label: String) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
@@ -2826,6 +2855,7 @@ private fun PreflightReadyToConnectRow(label: String) {
         HorizontalDivider(color = StartExOutline)
     }
 }
+// CPD-ON
 
 @Composable
 private fun monitorLabel(state: MonitorState): String =

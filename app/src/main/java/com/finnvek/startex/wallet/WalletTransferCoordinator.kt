@@ -5,6 +5,7 @@ import com.finnvek.startex.network.ProviderError
 import com.finnvek.startex.network.ProviderResult
 import com.finnvek.startex.network.RpcLatestBlockhash
 import com.finnvek.startex.network.RpcSimulation
+import kotlinx.coroutines.CancellationException
 import org.sol4k.Base58
 import org.sol4k.PublicKey
 import org.sol4k.Transaction
@@ -224,6 +225,8 @@ class WalletTransferCoordinator(
             } finally {
                 message.fill(0)
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
         } catch (_: RuntimeException) {
             failure(SolTransferFailureReason.TRANSACTION_CONSTRUCTION_FAILED)
         } finally {
@@ -354,6 +357,8 @@ class WalletTransferCoordinator(
                         val persisted =
                             try {
                                 writeAhead.persist(signedTransfer)
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
                             } catch (_: RuntimeException) {
                                 false
                             }

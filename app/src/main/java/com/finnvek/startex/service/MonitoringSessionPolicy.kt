@@ -1,5 +1,6 @@
 package com.finnvek.startex.service
 
+import com.finnvek.startex.data.settings.OperatingMode
 import com.finnvek.startex.network.RetryPolicy
 import com.finnvek.startex.security.WalletAccessMode
 
@@ -21,15 +22,33 @@ object MonitoringSessionPolicy {
 
     fun isRecoverableSessionStatus(status: String): Boolean = status in recoverableSessionStatuses
 
+    fun isModeCompatible(
+        demoMode: Boolean,
+        operatingMode: OperatingMode,
+        sessionMode: String,
+    ): Boolean = !demoMode && operatingMode == OperatingMode.PAPER && sessionMode == OperatingMode.PAPER.name
+
     fun startAction(
-        paperMode: Boolean,
+        operatingMode: OperatingMode,
+        persistedSessionMode: String?,
         providersConfigured: Boolean,
         riskLimitsValid: Boolean,
     ): SessionStartAction =
         when {
-            !paperMode -> SessionStartAction.LIVE_EXECUTION_LOCKED
-            !providersConfigured || !riskLimitsValid -> SessionStartAction.NOTIFY_AND_STOP
-            else -> SessionStartAction.START_MONITORING
+            operatingMode != OperatingMode.PAPER ||
+                persistedSessionMode?.let {
+                    !isModeCompatible(demoMode = false, operatingMode, it)
+                } == true -> {
+                SessionStartAction.LIVE_EXECUTION_LOCKED
+            }
+
+            !providersConfigured || !riskLimitsValid -> {
+                SessionStartAction.NOTIFY_AND_STOP
+            }
+
+            else -> {
+                SessionStartAction.START_MONITORING
+            }
         }
 
     fun recoveryAction(

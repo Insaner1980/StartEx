@@ -2,7 +2,7 @@
 
 # StartEx project reference
 
-> Source-of-truth snapshot: 2026-08-09. This document describes the checked-in implementation, not an aspirational roadmap. When this document and executable code disagree, the code, generated Room schema, manifest, Gradle configuration, and tests take precedence.
+> Source-of-truth snapshot: 2026-08-14. This document describes the current checked-in implementation and repository configuration, not an aspirational roadmap. When this document and executable evidence disagree, current source, generated Room schema, manifest, Gradle configuration, resolved dependencies, built artifacts, and actual test results take precedence.
 
 ## 1. Purpose of this document
 
@@ -20,7 +20,7 @@ Use the more focused documents for deeper rationale:
 
 ## 2. Product summary
 
-StartEx is a private, single-user, phone-only Android application for monitoring newly created Solana tokens and simulating very small trades from a dedicated self-custody wallet. It is designed for sideloaded personal use, keeps durable application data on the device, and has no StartEx backend.
+StartEx is a private, single-user, phone-oriented Android application for monitoring newly created Solana tokens and simulating very small trades from a dedicated self-custody wallet. It is designed for sideloaded personal use, keeps durable application data on the device, and has no StartEx backend. The APK does not enforce a phone-only device class.
 
 The implemented product has three materially different capability areas:
 
@@ -44,7 +44,7 @@ The implemented product has three materially different capability areas:
 
 ### Explicitly absent
 
-There is no StartEx server, account system, Firebase, cloud database, cloud sync, analytics SDK, billing, subscription, paid AI, LLM decision engine, remote signer, wallet-adapter approval flow, leverage, shared embedded API key, automatic reboot receiver, or production automated mainnet buy/sell path.
+There is no StartEx server, account system, configured Firebase product, cloud database, cloud sync, app-configured analytics SDK, billing, subscription, paid AI, LLM decision engine, remote signer, wallet-adapter approval flow, leverage, shared embedded API key, automatic reboot receiver, or production automated mainnet buy/sell path. Google Code Scanner and ML Kit nevertheless bring `firebase-components` and Google Data Transport into the resolved release graph as transitive runtime libraries.
 
 ## 3. Current platform and application identity
 
@@ -60,13 +60,13 @@ There is no StartEx server, account system, Firebase, cloud database, cloud sync
 | Compile and target SDK | API 37 |
 | Java toolchain | JDK 17 |
 | UI toolkit | Jetpack Compose with Material 3 |
-| Orientation | Portrait only |
+| Orientation | Not locked by manifest or runtime code; the compact phone UI and visual QA are primarily portrait-oriented |
 | Database | Room database `startex.db`, schema version 1 |
 | Preferences | Preferences DataStore named `app_settings` |
 | Network stack | One shared OkHttp client plus provider-specific adapters |
-| Build outputs | Debug APK and R8/resource-shrunk unsigned release APK unless external signing is configured |
+| Build outputs | Debug APK and, under the checked-in configuration, an unsigned R8/resource-shrunk release APK |
 
-`MainActivity` is the only exported component and only because it is the launcher activity. `TradingMonitorService` is non-exported. The application supports RTL at the manifest level.
+`MainActivity` is the only app-authored exported component and is exported because it is the launcher activity. In the merged release manifest, AndroidX also contributes an exported `ProfileInstallReceiver` guarded by `android.permission.DUMP`; every other merged release component is non-exported. Debug dependencies add further tooling components, so the source manifest alone is not a complete debug-component inventory. `TradingMonitorService` is non-exported. The application supports RTL at the manifest level.
 
 ## 4. Build system and dependencies
 
@@ -78,7 +78,7 @@ There is no StartEx server, account system, Firebase, cloud database, cloud sync
 - KSP: 2.3.11.
 - Repositories are centralized in `settings.gradle.kts`; project repositories are rejected.
 - Repository sources are Google Maven, Maven Central, and the Gradle Plugin Portal where appropriate.
-- Gradle JVM heap is 4 GiB. Parallel execution and build cache are enabled.
+- Gradle JVM heap is 4 GiB and parallel execution is enabled. The build cache is deliberately disabled because Kotlin versions before 2.4.20 are affected by CVE-2026-53914; the checked-in Kotlin version remains 2.2.10.
 - AndroidX, non-transitive `R`, and non-final resource IDs are enabled.
 - Core library desugaring uses `desugar_jdk_libs` 2.1.5.
 - Java and Kotlin JVM targets are 17.
@@ -114,7 +114,7 @@ There is no StartEx server, account system, Firebase, cloud database, cloud sync
 | Mnemonics | `cash.z.ecc.android:kotlin-bip39` 1.0.9 |
 | Key/signature and basic transaction work | Sol4k 0.6.1 |
 | Solana message models | Solana Mobile Web3 Solana 0.3.1 |
-| Hardened Solana derivation | Vendored Trust Wallet Core `wallet-core-4.7.3.aar` |
+| Hardened Solana derivation | Vendored Trust Wallet Core `app/libs/wallet-core-4.7.3.aar` |
 
 ### Test and quality tooling
 
@@ -127,8 +127,29 @@ There is no StartEx server, account system, Firebase, cloud database, cloud sync
 | Roborazzi Compose | 1.71.0 |
 | ktlint Gradle plugin | 14.2.0, running ktlint 1.8.0 |
 | detekt | 1.23.8, `maxIssues: 0` |
+| Compose rules for ktlint / detekt | 0.6.4 / 0.4.23 |
+| OWASP Dependency-Check | 13.0.0; scans debug and release runtime classpaths |
+| Android security lint rules | 1.0.4, attached through `lintChecks` |
 
 Ktlint excludes generated and build output. Detekt targets JVM 17, emits SARIF and XML, and uses the checked-in configuration. Notable configured thresholds include 140-character lines, 300-line methods, 2,200-line classes, and project-specific complexity/function limits. These thresholds accommodate the current large UI and ViewModel files; they do not make those files automatically low-risk.
+
+### Dependency integrity and forced transitive versions
+
+`gradle/verification-metadata.xml` enables metadata and signature verification and records trusted signing keys, ignored keys whose public material was unavailable, and checksums for artifacts that could not be signature-verified. The metadata is part of the dependency-integrity boundary; changing a version can require a deliberate metadata update as well as a version-catalog edit.
+
+The root build applies security-driven version selection to the buildscript classpath and every project configuration:
+
+| Match | Forced version |
+| --- | --- |
+| `io.netty:netty-*`, except `netty-tcnative*` | 4.1.136.Final |
+| `org.bouncycastle:{bcpkix-jdk18on,bcprov-jdk18on,bcutil-jdk18on}` | 1.84 |
+| `ch.qos.logback:{logback-classic,logback-core}` | 1.5.34 |
+| `org.bitbucket.b_c:jose4j` | 0.9.6 |
+| `org.jdom:jdom2` | 2.0.6.1 |
+| `org.apache.commons:commons-lang3` | 3.20.0 |
+| `org.apache.httpcomponents:httpclient` | 4.5.14 |
+
+These rules can affect application, test, plugin, scanner, and other tooling graphs. A dependency review must therefore inspect resolved configurations instead of assuming that the requested or catalog version is the version actually used. The checked-in Dependency-Check suppressions cover documented false-positive CPE mappings and the Kotlin build-cache CVE under the explicit condition that caching remains disabled.
 
 ## 5. Repository and source map
 
@@ -137,18 +158,31 @@ Ktlint excludes generated and build output. Detekt targets JVM 17, emits SARIF a
 | Path | Responsibility |
 | --- | --- |
 | `settings.gradle.kts` | Repository policy, Foojay toolchain resolver, root name, and the single module. |
-| `build.gradle.kts` | Root plugin aliases. |
-| `gradle.properties` | Build performance and application identity properties. |
+| `build.gradle.kts` | Root plugin aliases plus security-driven transitive-version enforcement for buildscript and project configurations. |
+| `gradle.properties` | Build performance, disabled build cache, Android resource behavior, and application identity properties. |
 | `gradle/libs.versions.toml` | Version catalog for all external dependencies/plugins. |
+| `gradle/verification-metadata.xml` | Trusted keys, ignored unavailable keys, and artifact checksums used by Gradle dependency verification. |
+| `.github/workflows/codeql.yml` | Java/Kotlin CodeQL analysis with a manual Android debug build. |
+| `.github/workflows/dependency-submission.yml` | Validated Gradle dependency-graph generation and GitHub submission. |
+| `config/android-check.json` | StartEx module, variant, task, dependency, lint, detekt, Semgrep, and Dependency-Check inputs for the shared checker engine. |
+| `config/check-exceptions.json` | Structured, scoped, owner/expiry-tracked scanner exceptions; currently eight MobSF exceptions expiring 2026-10-31. |
 | `config/detekt/detekt.yml` | Static-analysis policy. |
+| `config/semgrep/startex-security.yml` | Project rules for unsafe WebView interfaces/file access and cleartext traffic. |
+| `config/dependency-check/suppressions.xml` | Evidence-bearing Dependency-Check false-positive and build-cache-CVE suppressions. |
+| `tools/*.ps1` | Thin PowerShell entry points into `C:\Dev\Android-check\tools\InvokeProjectCheck.ps1`; the shared engine is not copied into this repository. |
+| `.deepsec` | pnpm workspace for DeepSec 2.3.4 scan, AI processing/revalidation, and Markdown export. |
 | `.editorconfig` | Kotlin/Compose formatting behavior. |
 | `app/build.gradle.kts` | Android variants, feature locks, quality tools, Room schema output, and dependencies. |
-| `app/schemas/.../1.json` | Generated Room schema contract for version 1. |
+| `app/proguard-rules.pro` | Project R8/ProGuard rules layered on the optimized Android default for release builds. |
+| `app/schemas/com.finnvek.startex.data.local.StartExDatabase/1.json` | Generated Room schema contract for version 1. |
 | `app/libs/wallet-core-4.7.3.aar` | Vendored Trust Wallet Core Android artifact. |
-| `app/src/main/AndroidManifest.xml` | Permissions, components, backup/network rules, orientation, and foreground-service declaration. |
+| `app/src/main/AndroidManifest.xml` | Permissions, exported-component boundaries, backup/network references, RTL support, and foreground-service declaration. |
+| `app/src/main/res/xml/data_extraction_rules.xml` | Explicit backup and device-transfer exclusion policy. |
+| `app/src/main/res/xml/network_security_config.xml` | Base cleartext-disabled network-security policy. |
+| `app/src/main/res/xml-v36/network_security_config.xml` | API 36+ policy adding native certificate-transparency enforcement. |
 | `app/src/main/res/values/strings.xml` | User-facing text and accessibility labels. |
 | `app/src/main/res/values/styles.xml` | Android window-level dark styling. |
-| `app/src/main/res/drawable-nodpi/startex_launcher.png` | Launcher icon. |
+| `app/src/main/res/drawable-nodpi/startex_launcher_art.png` | Launcher artwork referenced by adaptive-icon resources. |
 
 The root reference image `ChatGPT Image Aug 9, 2026, 02_21_09 AM.png` is ignored by Git and was used only as visual direction. Runtime values were not copied from it.
 
@@ -156,37 +190,37 @@ The root reference image `ChatGPT Image Aug 9, 2026, 02_21_09 AM.png` is ignored
 
 | Package / file group | Current responsibility |
 | --- | --- |
-| `MainActivity.kt` | Secure window, edge-to-edge Compose host, lifecycle forwarding. |
-| `StartExApplication.kt` | Process-level dependency composition, shared OkHttp client, notification channels. |
-| `SessionApiKeySource.kt` | Mutex-protected in-memory provider-key map using mutable character arrays. |
-| `bootstrap/DefaultConfiguration.kt` | Initial immutable strategy and risk rows. |
-| `data/local` | Room entities, DAOs, database creation, schema contract. |
-| `data/StartExRepository.kt` | Transactional persistence boundary and bounded cleanup/query operations. |
-| `data/settings` | DataStore model, defaults, validation, and setters. |
-| `data/AnalysisExport.kt` | Public trading-analysis export model. |
-| `data/HistoryExporter.kt` | Deterministic JSON and 21-column CSV serialization. |
-| `device/DeviceHealth.kt` | Network, battery, charging, thermal, and foreground-service facts plus entry policy. |
-| `domain/Amounts.kt` | Exact SOL/lamport, token atomic-unit, and EUR value types/conversions. |
-| `domain/CandidateDecision.kt` | Candidate states, hard filters, score factors, and deterministic scoring. |
-| `domain/ConfigurationEditor.kt` | User-editable configuration parsing, ranges, relationships, and immutable version creation. |
-| `network` | Provider result/error types, bounded transport, Helius, PumpPortal, Jupiter, Kraken, retry/freshness policy. |
-| `security` | Android Keystore cipher, authenticated secret envelope, trusted-address policy, wallet-access policy. |
-| `service` | Foreground monitoring lifecycle, notifications, session/recovery policy, bounded candidate dispatch. |
-| `trading/HardRiskController.kt` | Independent entry limits and circuit-breaker decisions. |
-| `trading/PaperCandidateCoordinator.kt` | Serialized observation, filtering, scoring, re-quote, final risk gate, and Paper entry. |
-| `trading/PaperExecutionEngine.kt` | Paper latency, slippage, route, and cost simulation. |
-| `trading/PaperPositionMonitor.kt` | Full-position sell quotes, exit decisions, bounded retry, and Paper close accounting. |
-| `trading/PaperRuntimeSources.kt` | Provider-backed safety proofs, filter thresholds, and runtime risk facts. |
-| `trading/PositionExit.kt` | Position state, exit triggers, P&L/costs, and retry policy. |
-| `trading/TransactionSafetyValidator.kt` | Future Live transaction-intent validation contract. |
-| `trading/SolanaMobileUnsignedTransactionParser.kt` | Legacy/v0 structure parsing with resolver interfaces. |
-| `trading/TransactionReconciler.kt` | Generic uncertain-transaction state machine and duplicate-attempt guard. |
-| `wallet` | BIP-39 wallet creation/restore, derivation, secret codec, trusted transfer preparation/submission/tracking. |
-| `ui/StartExUiState.kt` | Immutable UI state, overlays, transfer states, authentication purposes, and UI events. |
-| `ui/StartExViewModel.kt` | Main application orchestration and process-memory secret/wallet ownership. |
-| `ui/StartExApp.kt` | Top-level state routing, biometric prompts, service intents, sharing, and bottom navigation. |
-| `ui/screens` | Main, onboarding, wallet setup, receive/send, provider, preflight, configuration, and lock screens. |
-| `ui/components` / `ui/theme` | Reusable visual components, colors, shapes, and typography. |
+| `app/src/main/java/com/finnvek/startex/MainActivity.kt` | Secure window, edge-to-edge Compose host, lifecycle forwarding. |
+| `app/src/main/java/com/finnvek/startex/StartExApplication.kt` | Process-level dependency composition, shared OkHttp client, notification channels. |
+| `app/src/main/java/com/finnvek/startex/SessionApiKeySource.kt` | Mutex-protected in-memory provider-key map using mutable character arrays. |
+| `app/src/main/java/com/finnvek/startex/bootstrap/DefaultConfiguration.kt` | Initial immutable strategy and risk rows. |
+| `app/src/main/java/com/finnvek/startex/data/local` | Room entities, DAOs, database creation, schema contract. |
+| `app/src/main/java/com/finnvek/startex/data/StartExRepository.kt` | Transactional persistence boundary and bounded cleanup/query operations. |
+| `app/src/main/java/com/finnvek/startex/data/settings` | DataStore model, defaults, validation, and setters. |
+| `app/src/main/java/com/finnvek/startex/data/AnalysisExport.kt` | Public trading-analysis export model. |
+| `app/src/main/java/com/finnvek/startex/data/HistoryExporter.kt` | Deterministic JSON and 21-column CSV serialization. |
+| `app/src/main/java/com/finnvek/startex/device/DeviceHealth.kt` | Network, battery, charging, thermal, and foreground-service facts plus entry policy. |
+| `app/src/main/java/com/finnvek/startex/domain/Amounts.kt` | Exact SOL/lamport, token atomic-unit, and EUR value types/conversions. |
+| `app/src/main/java/com/finnvek/startex/domain/CandidateDecision.kt` | Candidate states, hard filters, score factors, and deterministic scoring. |
+| `app/src/main/java/com/finnvek/startex/domain/ConfigurationEditor.kt` | User-editable configuration parsing, ranges, relationships, and immutable version creation. |
+| `app/src/main/java/com/finnvek/startex/network` | Provider result/error types, bounded transport, Helius, PumpPortal, Jupiter, Kraken, retry/freshness policy. |
+| `app/src/main/java/com/finnvek/startex/security` | Android Keystore cipher, authenticated secret envelope, trusted-address policy, wallet-access policy. |
+| `app/src/main/java/com/finnvek/startex/service` | Foreground monitoring lifecycle, notifications, session/recovery policy, bounded candidate dispatch. |
+| `app/src/main/java/com/finnvek/startex/trading/HardRiskController.kt` | Independent entry limits and circuit-breaker decisions. |
+| `app/src/main/java/com/finnvek/startex/trading/PaperCandidateCoordinator.kt` | Serialized observation, filtering, scoring, re-quote, final risk gate, and Paper entry. |
+| `app/src/main/java/com/finnvek/startex/trading/PaperExecutionEngine.kt` | Paper latency, slippage, route, and cost simulation. |
+| `app/src/main/java/com/finnvek/startex/trading/PaperPositionMonitor.kt` | Full-position sell quotes, exit decisions, bounded retry, and Paper close accounting. |
+| `app/src/main/java/com/finnvek/startex/trading/PaperRuntimeSources.kt` | Provider-backed safety proofs, filter thresholds, and runtime risk facts. |
+| `app/src/main/java/com/finnvek/startex/trading/PositionExit.kt` | Position state, exit triggers, P&L/costs, and retry policy. |
+| `app/src/main/java/com/finnvek/startex/trading/TransactionSafetyValidator.kt` | Future Live transaction-intent validation contract. |
+| `app/src/main/java/com/finnvek/startex/trading/SolanaMobileUnsignedTransactionParser.kt` | Legacy/v0 structure parsing with resolver interfaces. |
+| `app/src/main/java/com/finnvek/startex/trading/TransactionReconciler.kt` | Generic uncertain-transaction state machine and duplicate-attempt guard. |
+| `app/src/main/java/com/finnvek/startex/wallet` | BIP-39 wallet creation/restore, derivation, secret codec, trusted transfer preparation/submission/tracking. |
+| `app/src/main/java/com/finnvek/startex/ui/StartExUiState.kt` | Immutable UI state, overlays, transfer states, authentication purposes, and UI events. |
+| `app/src/main/java/com/finnvek/startex/ui/StartExViewModel.kt` | Main application orchestration and process-memory secret/wallet ownership. |
+| `app/src/main/java/com/finnvek/startex/ui/StartExApp.kt` | Top-level state routing, biometric prompts, service intents, sharing, and bottom navigation. |
+| `app/src/main/java/com/finnvek/startex/ui/screens` | Main, onboarding, wallet setup, receive/send, provider, preflight, configuration, and lock screens. |
+| `app/src/main/java/com/finnvek/startex/ui/components` / `app/src/main/java/com/finnvek/startex/ui/theme` | Reusable visual components, colors, shapes, and typography. |
 
 ## 6. Runtime architecture
 
@@ -249,7 +283,7 @@ The top-level branch order is significant:
 
 ### Permissions
 
-The manifest requests only:
+The app-authored manifest explicitly requests only:
 
 - `INTERNET`;
 - `ACCESS_NETWORK_STATE`;
@@ -257,7 +291,7 @@ The manifest requests only:
 - `FOREGROUND_SERVICE`;
 - `FOREGROUND_SERVICE_SPECIAL_USE`.
 
-QR scanning uses Google Code Scanner and does not add an app-owned camera permission.
+The merged release manifest additionally contains dependency-contributed `USE_BIOMETRIC` and legacy `USE_FINGERPRINT` permissions plus the app-signature `DYNAMIC_RECEIVER_NOT_EXPORTED_PERMISSION` declaration/use added by AndroidX. QR scanning uses Google Code Scanner and does not add a `CAMERA` permission.
 
 ### Backup and transport policy
 
@@ -1042,7 +1076,7 @@ Creation, save, unlock, reveal mnemonic, add/delete/unlock trusted address, subm
 
 ### Current test inventory
 
-The checked-in test source contains 234 `@Test` methods under `app/src/test` and 17 under `app/src/androidTest`.
+The checked-in test source contains 239 `@Test` methods across 50 Kotlin files under `app/src/test` and 17 `@Test` methods across three Kotlin files under `app/src/androidTest`. Production source contains 60 Kotlin files under `app/src/main/java`.
 
 JVM suites cover exact amounts, configuration, candidate decisions, hard risk, Paper candidate/entry/exit/final-state behavior, transaction parsing/validation/reconciliation, provider protocols/parsers/transport/retry, repository configuration safety, retention/export, wallet creation/codec/address/transfer/tracking, UI-state/security/session behavior, notification policy, device health, and Roborazzi UI rendering.
 
@@ -1068,6 +1102,47 @@ With a suitable emulator or device:
 ```
 
 The full recorded 2026-08-09 verification and its exact worker/cache flags are in [TESTING.md](TESTING.md). Test counts in this document describe the current source inventory; a passing count should only be claimed after running the relevant task.
+
+### Shared Android-check entry points
+
+Every script in `tools` resolves the StartEx root, passes project ID `startex`, forwards all caller arguments, and returns the shared engine's exit code. They are Windows-local adapters to the absolute external path `C:\Dev\Android-check\tools\InvokeProjectCheck.ps1`; a checkout on another machine is not self-contained for these commands until that shared engine exists at the expected path.
+
+| Script | Shared command |
+| --- | --- |
+| `tools/ac.ps1` | `android-check` |
+| `tools/bc.ps1` | `build-check` |
+| `tools/cr.ps1` | `compose-rules` |
+| `tools/cs.ps1` | `compose-stability` |
+| `tools/db.ps1` | `dependabot-check` |
+| `tools/dc.ps1` | `dependency-check` |
+| `tools/ds.ps1` | `deep-sec` |
+| `tools/ga.ps1` | `google-android-security` |
+| `tools/lc.ps1` | `lint-check` |
+| `tools/ms.ps1` | `mobsf-scan` |
+| `tools/os.ps1` | `osv-scan` |
+| `tools/pc.ps1` | `pmd-check` |
+| `tools/ql.ps1` | `codeql-check` |
+| `tools/sc.ps1` | `security-check` |
+| `tools/sentry.ps1` | `sentry` |
+| `tools/ss.ps1` | `secret-scan` |
+| `tools/tc.ps1` | `test-check` |
+
+The project config gives the shared engine one required Android application module (`:app`), debug and release variants, `main`/`test`/`androidTest` source sets, `:app:assembleDebug`, `:app:testDebugUnitTest`, ktlint, detekt, debug/full lint, debug/release runtime dependency graphs, Dependency-Check, and the project Semgrep configuration. It declares no included builds and no Compose stability task. Checker reports and wrapper-level `CLEAN` classifications are derived artifacts: review raw findings, exceptions, and coverage before treating them as proof.
+
+`config/check-exceptions.json` currently contains eight narrowly selected MobSF exceptions. Each has a rule, scope, reason, owner, source selector, finding path, tracking identifier, and expiry. All currently expire on 2026-10-31, so a later scan must revalidate or remove them rather than silently treating them as permanent suppressions.
+
+The `.deepsec` workspace pins DeepSec 2.3.4 and exposes scan, AI-processing, high-severity revalidation, and Markdown export scripts. Its process/revalidation commands explicitly select the Codex agent and `gpt-5.6-luna`; therefore a raw DeepSec scan and the processed or revalidated report are distinct stages. The workspace also forces affected Undici 8.x versions below 8.9.0 to 8.10.0 and disables build scripts for `@google/genai` and `protobufjs`.
+
+### GitHub Actions
+
+Only two checked-in workflows exist:
+
+| Workflow | Triggers | Runtime and action |
+| --- | --- | --- |
+| `CodeQL` | Push and pull request to `main`, Mondays at 04:17 UTC, manual dispatch | Ubuntu; Temurin 17; Android platform/build-tools 37; Gradle setup; manual `clean :app:assembleDebug` build; Java/Kotlin CodeQL analysis. |
+| `Dependency Submission` | Push to `main`, manual dispatch | Ubuntu; Temurin 21; Gradle dependency graph generation/submission with wrapper validation. |
+
+Both workflows pin third-party actions to full commit SHAs. Their Gradle invocations use lenient dependency verification; CodeQL also disables the build cache and daemon, and dependency submission disables the configuration cache. These workflows do not run the full JVM, instrumentation, lint, ktlint, detekt, scanner, or release-build matrix. A successful CodeQL build or dependency submission must not be described as complete project verification.
 
 ### Verification boundaries
 
@@ -1108,15 +1183,15 @@ Every review should preserve these unless the requested change explicitly alters
 
 ### UI or navigation work
 
-Review `StartExApp.kt`, `StartExUiState.kt`, the relevant `ui/screens` file, shared components/theme, strings, and `StartExViewModel.kt`. Check secure top-level routing, back/dismiss behavior, 48 dp targets, large text, unavailable states, Demo behavior, authentication purpose, and whether `FLAG_SECURE` changes screenshot-based QA.
+Review `app/src/main/java/com/finnvek/startex/ui/StartExApp.kt`, `app/src/main/java/com/finnvek/startex/ui/StartExUiState.kt`, the relevant file under `app/src/main/java/com/finnvek/startex/ui/screens`, shared components/theme, `app/src/main/res/values/strings.xml`, and `app/src/main/java/com/finnvek/startex/ui/StartExViewModel.kt`. Check secure top-level routing, back/dismiss behavior, 48 dp targets, large text, unavailable states, Demo behavior, authentication purpose, and whether `FLAG_SECURE` changes screenshot-based QA.
 
 ### Wallet/security work
 
-Review `MainActivity.kt`, `StartExViewModel.kt`, `security/*`, `wallet/*`, Room envelope entities/transactions, manifest extraction rules, and security tests. Trace every mutable secret copy and every failure/cancellation branch. Treat biometric success as authorization for one named continuation, not a global boolean.
+Review `app/src/main/java/com/finnvek/startex/MainActivity.kt`, `app/src/main/java/com/finnvek/startex/ui/StartExViewModel.kt`, `app/src/main/java/com/finnvek/startex/security`, `app/src/main/java/com/finnvek/startex/wallet`, Room envelope entities/transactions, manifest extraction rules, and security tests. Trace every mutable secret copy and every failure/cancellation branch. Treat biometric success as authorization for one named continuation, not a global boolean.
 
 ### Provider work
 
-Review the provider adapter, `ProviderModels.kt`, `HttpTransport.kt`, `SessionApiKeySource.kt`, provider-health persistence, preflight, service retry/freshness behavior, fixture tests, and redaction. Validate current official schemas externally when changing provider behavior.
+Review the provider adapter, `app/src/main/java/com/finnvek/startex/network/ProviderModels.kt`, `app/src/main/java/com/finnvek/startex/network/HttpTransport.kt`, `app/src/main/java/com/finnvek/startex/SessionApiKeySource.kt`, provider-health persistence, preflight, service retry/freshness behavior, fixture tests, and redaction. Validate current official schemas externally when changing provider behavior.
 
 ### Candidate/strategy/risk work
 
@@ -1137,6 +1212,10 @@ Update entities, DAOs, database version/migration, exported schema JSON, reposit
 ### Build/release work
 
 Inspect resolved dependencies, generated merged manifest, debug/release feature constants, R8 output, signing configuration absence, backup/network configuration, and packaged native AAR behavior. A source declaration alone is not release-artifact proof.
+
+### CI, dependency, or scanner work
+
+Review the workflow trigger and permissions, pinned action SHA, JDK/SDK setup, exact Gradle arguments, root resolution rules, version catalog, verification metadata, suppressions/exceptions, raw report, and shared Android-check coverage together. Confirm that a dependency-submission success refers to the submitted graph, that a scanner `CLEAN` result means no unsuppressed blocking finding rather than zero raw matches, and that an exception remains exact and unexpired.
 
 ## 27. Known current limits and review hotspots
 
@@ -1160,6 +1239,12 @@ These are implementation facts or boundaries, not promises that an unrelated cha
 - Trust Wallet Core is vendored, Sol4k is pre-1.0, and Solana Mobile Web3 Core is experimental; dependency updates and native/runtime behavior need explicit review.
 - `FLAG_SECURE` intentionally makes ordinary Android screenshots black, so visual regression uses Robolectric/Roborazzi rather than device screenshots.
 - Provider keys, system images, Android hardware, and funded accounts are external inputs. Static/build success is not live integration evidence.
+- The checked-in GitHub workflows cover CodeQL compilation/analysis and dependency submission only; there is no complete test, lint, scanner, release-build, or device-test CI gate.
+- All local checker wrappers depend on the external Windows path `C:\Dev\Android-check`; their implementation and tool availability are outside this repository.
+- Scanner exceptions are time-bounded configuration, not proof that the underlying raw matches disappeared. The current eight MobSF exceptions require review by 2026-10-31.
+- CI uses `--dependency-verification lenient`, while the repository still maintains signature/checksum metadata. Workflow success alone does not prove strict verification-metadata completeness.
+- Root-level transitive-version forcing is limited to the resolved vulnerable module families. It can change build tooling as well as application graphs, so upgrades require resolved-graph and task validation.
+- The Gradle build cache remains disabled as the repository's mitigation for CVE-2026-53914 until the pinned Kotlin line can move to a fixed stable release.
 
 ## 28. Change discipline
 

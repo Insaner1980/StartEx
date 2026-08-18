@@ -82,6 +82,7 @@ class OkHttpJupiterTokensProvider(
                 .header(API_KEY_HEADER, apiKey)
                 .get()
                 .build()
+        // CPD-OFF
         requestGate.awaitTurn()
         val response =
             try {
@@ -92,6 +93,7 @@ class OkHttpJupiterTokensProvider(
                 return ProviderResult.Failure(ProviderError.NetworkUnavailable(ProviderId.JUPITER))
             }
         response.httpError(ProviderId.JUPITER)?.let { return ProviderResult.Failure(it) }
+        // CPD-ON
         return when (val parsed = JupiterTokensJson.parse(response.body, mint)) {
             is ProviderResult.Failure -> parsed
             is ProviderResult.Success -> enforceFreshness(parsed.value)

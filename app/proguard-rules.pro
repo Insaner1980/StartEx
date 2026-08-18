@@ -1,3 +1,3 @@
--keepattributes *Annotation*
--keepattributes Signature
--keep class wallet.core.jni.** { *; }
+-keep class wallet.core.jni.HDWallet { *; }
+-keep class wallet.core.jni.PrivateKey { *; }
+-keep class wallet.core.jni.CoinType { *; }

@@ -84,6 +84,14 @@ class WalletAccessPolicyTest {
         assertFalse(policy.canSign(isForeground = true))
     }
 
+    @Test
+    fun `persisted wallet envelope is the access mode source of truth`() {
+        assertEquals(WalletAccessMode.UNATTENDED, persistedWalletAccessMode(KeystoreAccessMode.UNATTENDED.name))
+        listOf(null, "", "UNKNOWN", KeystoreAccessMode.BIOMETRIC_EACH_USE.name).forEach { stored ->
+            assertEquals(WalletAccessMode.SECURE_SESSION, persistedWalletAccessMode(stored))
+        }
+    }
+
     private fun completeUnattendedPrerequisites() =
         UnattendedPrerequisites(
             dedicatedLowBalanceWalletConfirmed = true,

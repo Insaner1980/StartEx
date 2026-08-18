@@ -112,6 +112,10 @@ class HeliusRpcClientTest {
             assertTrue(result is ProviderResult.Success)
             assertEquals(123_456_789, (result as ProviderResult.Success).value.lamports)
             assertEquals(420_000_001, result.value.slot)
+            assertEquals(
+                "https://mainnet.helius-rpc.com/?api-key=fixture-key",
+                transport.request.url.toString(),
+            )
             assertEquals("fixture-key", transport.request.url.queryParameter("api-key"))
             assertTrue(checkNotNull(transport.body).contains("\"method\":\"getBalance\""))
             assertFalse(checkNotNull(transport.body).contains("fixture-key"))

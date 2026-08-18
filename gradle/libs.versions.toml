@@ -2,16 +2,19 @@
 agp = "9.3.1"
 # Kotlin 2.4 requires a separate compiler-warning migration.
 #noinspection NewerVersionAvailable
-kotlin = "2.2.10"
+kotlin = "2.2.21"
 ksp = "2.3.11"
-composeBom = "2026.06.01"
+# Kotlin 2.2 compatibility; newer analyzer versions require Kotlin 2.3 or 2.4.
+#noinspection NewerVersionAvailable
+composeStabilityAnalyzer = "0.6.4"
+composeBom = "2026.08.00"
 core = "1.19.0"
 activity = "1.13.0"
 lifecycle = "2.11.0"
 room = "2.8.4"
 datastore = "1.2.1"
 biometric = "1.1.0"
-okhttp = "5.4.0"
+okhttp = "5.5.0"
 serialization = "1.11.0"
 coroutines = "1.11.0"
 zxing = "3.5.4"
@@ -33,7 +36,7 @@ composeRulesKtlint = "0.6.4"
 desugarJdkLibs = "2.1.5"
 owaspDependencyCheck = "13.0.0"
 androidSecurityLints = "1.0.4"
-roborazzi = "1.71.0"
+roborazzi = "1.72.0"
 robolectric = "4.16.1"
 
 [libraries]
@@ -84,3 +87,4 @@ room = { id = "androidx.room", version.ref = "room" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintGradle" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
 owasp-dependency-check = { id = "org.owasp.dependencycheck", version.ref = "owaspDependencyCheck" }
+stability-analyzer = { id = "com.github.skydoves.compose.stability.analyzer", version.ref = "composeStabilityAnalyzer" }

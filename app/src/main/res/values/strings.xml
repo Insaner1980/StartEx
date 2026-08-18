@@ -48,13 +48,13 @@
     <string name="settings_notifications">Notifications</string>
     <string name="settings_health">Device and connection health</string>
     <string name="settings_data">Data and diagnostics</string>
-    <string name="paper_default">Paper is the safe default</string>
+    <string name="paper_default">Paper is the non-spending default</string>
     <string name="live_locked">Live trading is locked</string>
     <string name="live_locked_body">Automated Live trading is unavailable in this build. Use Paper mode.</string>
     <string name="preflight_title">Preflight check</string>
-    <string name="preflight_intro">Every required check must pass before monitoring starts.</string>
+    <string name="preflight_intro">Every technical check must pass before monitoring starts. Use only a dedicated low-balance wallet; StartEx cannot verify wallet separation.</string>
     <string name="check_wallet">Wallet created and unlocked</string>
-    <string name="check_backup">Recovery phrase backup verified</string>
+    <string name="check_backup">Recovery phrase backup confirmed</string>
     <string name="check_providers">Required providers healthy</string>
     <string name="check_limits">Risk limits configured</string>
     <string name="check_reserve">Fee and exit reserve available</string>
@@ -193,6 +193,7 @@
     <string name="wallet_reveal_failed">The recovery phrase could not be revealed.</string>
     <string name="wallet_saved_locked">Wallet encrypted and saved. Unlock it before use.</string>
     <string name="wallet_save_failed">The wallet could not be encrypted and saved. Nothing was persisted.</string>
+    <string name="wallet_replacement_unsupported">A different wallet cannot replace the configured StartEx wallet. Restore the same recovery phrase.</string>
     <string name="wallet_preparing">Preparing wallet securely…</string>
     <string name="wallet_saving">Encrypting and saving wallet…</string>
     <string name="backup_phrase_title">Back up recovery phrase</string>
@@ -205,7 +206,7 @@
     <string name="backup_quiz_incorrect">Those words do not match. Check your offline copy and try again.</string>
     <string name="verify_backup">Verify backup</string>
     <string name="restore_wallet_title">Restore dedicated wallet</string>
-    <string name="restore_wallet_warning">Restore only a dedicated low-balance StartEx wallet. Never import a primary wallet.</string>
+    <string name="restore_wallet_warning">Restore only a dedicated low-balance StartEx wallet. Never import a primary wallet. StartEx cannot recover the phrase, so keep an offline copy.</string>
     <string name="recovery_phrase">Recovery phrase</string>
     <string name="restore_phrase_help">Enter a valid BIP-39 phrase. It is cleared from the form after validation.</string>
     <string name="restore_phrase_invalid">The recovery phrase is invalid. No wallet was saved.</string>
@@ -217,6 +218,7 @@
     <string name="new_wallet">New wallet</string>
     <string name="derivation_path_value">Derivation path: m/44\'/501\'/0\'/0\'</string>
     <string name="wallet_dedicated_confirmation">This is a dedicated low-balance wallet and I understand funds can be lost.</string>
+    <string name="restore_backup_confirmation">I have an offline copy of this recovery phrase. StartEx cannot recover it.</string>
     <string name="wallet_save_auth_notice">Saving requires a strong biometric. The phrase is encrypted with Android Keystore and never stored as plaintext.</string>
     <string name="encrypt_and_save_wallet">Authenticate and save</string>
     <string name="wallet_address">Wallet address</string>
@@ -364,7 +366,7 @@
     </plurals>
     <string name="notifications_system_managed">Permission and channel controls are managed by Android.</string>
     <string name="session_limit_short">User-started only · persistent notification · no boot start</string>
-    <string name="local_only_data">Room and DataStore on this device; no analytics or cloud account.</string>
+    <string name="local_only_data">Room and DataStore stay on this device; no cloud account or StartEx analytics. Google Code Scanner sends diagnostics and usage metrics to Google.</string>
     <string name="secure_session_active">Secure session is the enforced default</string>
     <string name="emergency_controls">Emergency controls</string>
     <string name="emergency_controls_body">Stopping prevents new monitoring work. It cannot reverse a submitted transaction.</string>
@@ -392,7 +394,7 @@
     <string name="provider_health_pending">Configuration alone is not a health check. Monitoring remains blocked until a live check succeeds.</string>
     <string name="setup_final_acknowledge">I reviewed the checklist and understand incomplete items keep monitoring blocked.</string>
     <string name="backup_status">Recovery backup</string>
-    <string name="backup_verified">Backup quiz verified</string>
+    <string name="backup_verified">Recovery backup confirmed</string>
     <string name="backup_not_verified">Create or restore the wallet and complete its backup step.</string>
     <string name="wallet_status">Dedicated wallet</string>
     <string name="wallet_configured">Wallet encrypted on this device</string>
@@ -558,7 +560,7 @@
     <string name="unit_minutes">minutes</string>
     <string name="unit_seconds">seconds</string>
     <string name="unit_score">score</string>
-    <string name="configuration_safe_range">Safe range %1$s %2$s. Current/edit value is shown above.</string>
+    <string name="configuration_safe_range">Allowed range %1$s %2$s. Current/edit value is shown above.</string>
     <string name="reset_paper_defaults">Reset fields to Paper defaults</string>
     <string name="save_configuration">Save new versions</string>
     <string name="configuration_saving">Saving new configuration versions…</string>
@@ -570,7 +572,7 @@
     <string name="configuration_error_required">a value is required</string>
     <string name="configuration_error_format">use whole numbers or a decimal point only</string>
     <string name="configuration_error_precision">too many decimal places</string>
-    <string name="configuration_error_range">outside the displayed safe range</string>
+    <string name="configuration_error_range">outside the displayed allowed range</string>
     <string name="configuration_error_inconsistent">conflicts with another limit</string>
     <string name="configuration_error_overflow">value is too large</string>
     <string name="battery_optimization_title">Battery optimization settings</string>

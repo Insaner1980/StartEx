@@ -49,6 +49,8 @@ class StartExRepository(
 ) {
     fun observeWalletProfile(): Flow<WalletProfileEntity?> = database.walletDao().observeProfile()
 
+    fun observeWalletSecretEnvelopeAccessMode(): Flow<String?> = database.walletDao().observeSecretEnvelopeAccessMode()
+
     fun observeTrustedAddresses(): Flow<List<TrustedAddressEntity>> = database.walletDao().observeTrustedAddresses()
 
     fun observeActiveSession(activeStates: List<String>): Flow<BotSessionEntity?> = database.botSessionDao().observeActive(activeStates)
@@ -89,12 +91,22 @@ class StartExRepository(
         return database.appEventDao().observeRecent(limit)
     }
 
+    suspend fun latestConfiguration(): Pair<StrategyConfigEntity?, RiskConfigEntity?> =
+        database.withTransaction {
+            database.configDao().latestStrategy() to database.configDao().latestRisk()
+        }
+
     suspend fun saveWallet(
         profile: WalletProfileEntity,
         envelope: WalletSecretEnvelopeEntity,
     ) {
-        require(envelope.walletProfileId == profile.id)
+        require(profile.id == SINGLE_WALLET_PROFILE_ID)
+        require(envelope.walletProfileId == SINGLE_WALLET_PROFILE_ID)
         database.withTransaction {
+            val existing = database.walletDao().profile()
+            require(existing == null || existing.publicAddress == profile.publicAddress) {
+                "Wallet replacement is not supported"
+            }
             database.walletDao().upsertProfile(profile)
             database.walletDao().upsertSecretEnvelope(envelope)
         }
@@ -233,6 +245,32 @@ class StartExRepository(
 
     suspend fun savePosition(position: PositionEntity) = database.positionDao().upsert(position)
 
+    suspend fun requestPaperEmergencyExit(
+        sessionId: String,
+        nowMillis: Long,
+    ): Int =
+        database.withTransaction {
+            val session = database.botSessionDao().byId(sessionId) ?: return@withTransaction 0
+            if (session.status !in CONFIGURATION_LOCKING_SESSION_STATES) return@withTransaction 0
+            val updatedPositions =
+                database.positionDao().requestPaperEmergencyExit(
+                    sessionId = sessionId,
+                    eligibleStates = PAPER_EXIT_ELIGIBLE_POSITION_STATES,
+                    nowMillis = nowMillis,
+                )
+            if (updatedPositions == 0) return@withTransaction 0
+            check(
+                database.botSessionDao().updateStatus(
+                    id = sessionId,
+                    status = "PROTECTING",
+                    stoppedAtMillis = null,
+                    stopReason = "EMERGENCY_EXIT_REQUESTED",
+                    lastHeartbeatAtMillis = nowMillis,
+                ) == 1,
+            )
+            updatedPositions
+        }
+
     suspend fun position(id: String): PositionEntity? = database.positionDao().byId(id)
 
     suspend fun openPositions(openStates: List<String>): List<PositionEntity> = database.positionDao().open(openStates)
@@ -250,7 +288,16 @@ class StartExRepository(
 
     suspend fun latestFailedTradeAt(failedStatuses: List<String>): Long? = database.ledgerDao().latestFailedTradeAt(failedStatuses)
 
-    suspend fun saveProviderHealth(health: ProviderHealthEntity) = database.providerHealthDao().upsert(health)
+    suspend fun updateProviderHealth(
+        provider: String,
+        update: (ProviderHealthEntity?) -> ProviderHealthEntity,
+    ): ProviderHealthEntity =
+        database.withTransaction {
+            val updated = update(database.providerHealthDao().byProvider(provider))
+            require(updated.provider == provider)
+            database.providerHealthDao().upsert(updated)
+            updated
+        }
 
     suspend fun addEventBounded(
         event: AppEventEntity,
@@ -344,25 +391,11 @@ class StartExRepository(
         require(position.mode == "PAPER")
         require(intent.status == "PAPER_FILLED")
         database.withTransaction {
-            val current =
-                database.dailyPerformanceDao().byDay(
-                    performanceEpochDay,
-                    DailyPerformanceEntity.MODE_PAPER,
-                )
-            val previous =
-                if (current == null) {
-                    database.dailyPerformanceDao().latest(DailyPerformanceEntity.MODE_PAPER)
-                } else {
-                    null
-                }
-            check(previous == null || previous.epochDay < performanceEpochDay)
             val performance =
-                applyPaperPerformanceDelta(
-                    current = current,
+                updatedPaperPerformance(
                     epochDay = performanceEpochDay,
                     delta = performanceDelta,
                     nowMillis = performanceAtMillis,
-                    previous = previous,
                 )
             database.candidateDao().upsert(candidate)
             database.decisionDao().insert(decision)
@@ -387,30 +420,38 @@ class StartExRepository(
         require(intent.side == "SELL")
         require(intent.status == "PAPER_FILLED")
         database.withTransaction {
-            val current =
-                database.dailyPerformanceDao().byDay(
-                    performanceEpochDay,
-                    DailyPerformanceEntity.MODE_PAPER,
-                )
-            val previous =
-                if (current == null) {
-                    database.dailyPerformanceDao().latest(DailyPerformanceEntity.MODE_PAPER)
-                } else {
-                    null
-                }
-            check(previous == null || previous.epochDay < performanceEpochDay)
             val performance =
-                applyPaperPerformanceDelta(
-                    current = current,
+                updatedPaperPerformance(
                     epochDay = performanceEpochDay,
                     delta = performanceDelta,
                     nowMillis = performanceAtMillis,
-                    previous = previous,
                 )
             database.positionDao().upsert(position)
             database.ledgerDao().insertIntent(intent)
             database.dailyPerformanceDao().upsert(performance)
         }
+    }
+
+    private suspend fun updatedPaperPerformance(
+        epochDay: Long,
+        delta: PaperPerformanceDelta,
+        nowMillis: Long,
+    ): DailyPerformanceEntity {
+        val current = database.dailyPerformanceDao().byDay(epochDay, DailyPerformanceEntity.MODE_PAPER)
+        val previous =
+            if (current == null) {
+                database.dailyPerformanceDao().latest(DailyPerformanceEntity.MODE_PAPER)
+            } else {
+                null
+            }
+        check(previous == null || previous.epochDay < epochDay)
+        return applyPaperPerformanceDelta(
+            current = current,
+            epochDay = epochDay,
+            delta = delta,
+            nowMillis = nowMillis,
+            previous = previous,
+        )
     }
 
     suspend fun recordSettlement(
@@ -522,6 +563,7 @@ class StartExRepository(
         const val MAXIMUM_CANDIDATE_QUERY_LIMIT = 1_000
         const val DEFAULT_TRADE_HISTORY_LIMIT = 250
         const val MAXIMUM_TRADE_HISTORY_LIMIT = 1_000
+        const val SINGLE_WALLET_PROFILE_ID = 1L
         val CONFIGURATION_LOCKING_SESSION_STATES =
             listOf("RUNNING", "PAUSED", "PROTECTING", "NEEDS_ATTENTION")
         val PAPER_EXIT_ATTEMPT_STATUSES =
@@ -530,5 +572,7 @@ class StartExRepository(
                 "PAPER_ROUTE_UNAVAILABLE",
                 "PAPER_COST_BLOCKED",
             )
+        val PAPER_EXIT_ELIGIBLE_POSITION_STATES =
+            listOf("OPEN", "EXIT_REQUESTED", "EXIT_BLOCKED")
     }
 }

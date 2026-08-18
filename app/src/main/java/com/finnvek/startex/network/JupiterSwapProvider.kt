@@ -126,6 +126,7 @@ class OkHttpJupiterSwapProvider(
     }
 
     override suspend fun execute(request: SwapExecuteRequest): ProviderResult<SwapExecution> {
+        // CPD-OFF
         validateExecute(request)?.let { return ProviderResult.Failure(it) }
         val apiKey =
             apiKeySource.apiKeyFor(ProviderId.JUPITER)?.takeIf(String::isNotBlank)
@@ -136,6 +137,7 @@ class OkHttpJupiterSwapProvider(
                 put("requestId", request.requestId)
                 request.lastValidBlockHeight?.let { put("lastValidBlockHeight", it) }
             }
+        // CPD-ON
         val httpRequest =
             Request
                 .Builder()

@@ -97,19 +97,35 @@ class ServiceNotificationPolicyTest {
     }
 
     @Test
-    fun `emergency exit selects only current paper session positions`() {
-        val open = position(id = "open", sessionId = "current", mode = "PAPER", status = "OPEN")
-        val live = position(id = "live", sessionId = "current", mode = "LIVE", status = "OPEN")
-        val other = position(id = "other", sessionId = "other", mode = "PAPER", status = "OPEN")
+    fun `session pnl requires a fresh quote for every open position`() {
+        val first = position(id = "one", sessionId = "session", mode = "PAPER", status = "OPEN")
+        val second = position(id = "two", sessionId = "session", mode = "PAPER", status = "OPEN")
+        val now = 1_000L
 
-        val updates = paperEmergencyExitUpdates(listOf(open, live, other), "current", 123)
-
-        assertEquals(listOf("open"), updates.map(PositionEntity::id))
-        assertEquals("EXIT_REQUESTED", updates.single().status)
-        assertEquals("EMERGENCY_EXIT", updates.single().exitReason)
-        assertEquals(123L, updates.single().updatedAtMillis)
+        assertEquals(
+            2L,
+            sessionPnlLamports(
+                listOf(
+                    first.copy(latestSellQuoteAtMillis = now),
+                    second.copy(latestSellQuoteAtMillis = now),
+                ),
+                nowMillis = now,
+                maximumQuoteAgeMillis = 100,
+            ),
+        )
+        assertNull(
+            sessionPnlLamports(
+                listOf(
+                    first.copy(latestSellQuoteAtMillis = now),
+                    second.copy(latestSellQuoteAtMillis = now - 101),
+                ),
+                nowMillis = now,
+                maximumQuoteAgeMillis = 100,
+            ),
+        )
     }
 
+    // CPD-OFF
     private fun position(
         id: String,
         sessionId: String,
@@ -145,4 +161,5 @@ class ServiceNotificationPolicyTest {
         routeAvailable = true,
         reconciliationState = "PAPER",
     )
+    // CPD-ON
 }

@@ -4,6 +4,7 @@ import com.finnvek.startex.bootstrap.DefaultConfiguration
 import com.finnvek.startex.data.local.DailyPerformanceEntity
 import com.finnvek.startex.data.local.PositionEntity
 import com.finnvek.startex.data.local.TradeExportRow
+import com.finnvek.startex.data.local.freshSellQuoteLamports
 import com.finnvek.startex.ui.screens.HistoryDateFilter
 import com.finnvek.startex.ui.screens.HistoryModeFilter
 import com.finnvek.startex.ui.screens.configurationInputs
@@ -11,6 +12,7 @@ import com.finnvek.startex.ui.screens.filterTradeHistory
 import com.finnvek.startex.ui.screens.summarizeDailyPerformance
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.math.BigInteger
@@ -130,6 +132,16 @@ class HistoryAndConfigurationUiTest {
             ),
         )
         assertFalse(canRequestEmergencyExit(emptyList(), demoMode = false))
+    }
+
+    @Test
+    fun executableQuoteRequiresCurrentAvailableRoute() {
+        val fresh = position(mode = "PAPER", status = "OPEN").copy(latestSellQuoteAtMillis = 900)
+
+        assertEquals(1L, fresh.freshSellQuoteLamports(nowMillis = 1_000, maximumAgeMillis = 100))
+        assertNull(fresh.freshSellQuoteLamports(nowMillis = 1_001, maximumAgeMillis = 100))
+        assertNull(fresh.copy(routeAvailable = false).freshSellQuoteLamports(1_000, 100))
+        assertNull(fresh.copy(latestSellQuoteAtMillis = 1_001).freshSellQuoteLamports(1_000, 100))
     }
 
     private fun trade(

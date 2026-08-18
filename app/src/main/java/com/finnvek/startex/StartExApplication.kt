@@ -15,7 +15,13 @@ import com.finnvek.startex.network.OkHttpJupiterSwapProvider
 import com.finnvek.startex.network.OkHttpJupiterTokensProvider
 import com.finnvek.startex.network.OkHttpPumpPortalDiscoveryProvider
 import com.finnvek.startex.network.OkHttpTransport
+import com.finnvek.startex.network.ProviderId
+import com.finnvek.startex.security.AndroidKeystoreSecretCipher
+import com.finnvek.startex.security.KeystoreAccessMode
+import com.finnvek.startex.security.SecretEnvelope
+import com.finnvek.startex.security.clearSecret
 import com.finnvek.startex.service.TradingMonitorService
+import com.finnvek.startex.wallet.WalletSecretCodec
 import okhttp3.OkHttpClient
 import java.time.Duration
 
@@ -43,6 +49,41 @@ class StartExApplication : Application() {
     val jupiterSwap by lazy { OkHttpJupiterSwapProvider(httpTransport, sessionApiKeys) }
     val jupiterTokens by lazy { OkHttpJupiterTokensProvider(httpTransport, sessionApiKeys) }
     val fiatRates by lazy { KrakenFiatRateProvider(httpTransport) }
+
+    internal suspend fun restoreSessionApiKey(provider: ProviderId): Boolean {
+        val restored =
+            runCatching {
+                val stored = repository.providerCredential(provider.name) ?: return@runCatching false
+                require(KeystoreAccessMode.valueOf(stored.keystoreAccessMode) == KeystoreAccessMode.UNATTENDED) {
+                    "Provider credential cannot be restored unattended"
+                }
+                val storedIv = stored.apiKeyIv
+                val storedCiphertext = stored.encryptedApiKey
+                val envelope =
+                    try {
+                        SecretEnvelope(
+                            version = stored.secretEnvelopeVersion,
+                            publicAddress = "provider:${provider.name}",
+                            iv = storedIv,
+                            ciphertext = storedCiphertext,
+                        )
+                    } finally {
+                        storedIv.clearSecret()
+                        storedCiphertext.clearSecret()
+                    }
+                val cipher = AndroidKeystoreSecretCipher.unattended()
+                val encoded = cipher.decrypt(cipher.prepareDecryption(envelope), envelope)
+                val decoded = WalletSecretCodec.decodeAndClear(encoded)
+                try {
+                    sessionApiKeys.put(provider, decoded)
+                } finally {
+                    decoded.fill('0')
+                }
+                true
+            }.getOrDefault(false)
+        if (!restored) sessionApiKeys.remove(provider)
+        return restored
+    }
 
     override fun onCreate() {
         super.onCreate()

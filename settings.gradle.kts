@@ -1,3 +1,6 @@
+// Keep the CVE-2026-53914 mitigation enforced even if a higher-precedence Gradle option enables caching.
+gradle.startParameter.isBuildCacheEnabled = false
+
 pluginManagement {
     repositories {
         google()

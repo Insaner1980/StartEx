@@ -2,6 +2,7 @@ package com.finnvek.startex.service
 
 import com.finnvek.startex.StartExApplication
 import com.finnvek.startex.data.local.PositionEntity
+import com.finnvek.startex.data.local.freshSellQuoteLamports
 import java.math.BigDecimal
 
 internal enum class ForegroundStatus {
@@ -171,26 +172,24 @@ internal class ServiceNotificationPolicy {
     }
 }
 
-internal fun paperEmergencyExitUpdates(
+internal fun sessionPnlLamports(
     positions: List<PositionEntity>,
-    sessionId: String,
     nowMillis: Long,
-): List<PositionEntity> =
-    positions.mapNotNull { position ->
-        if (
-            position.sessionId != sessionId ||
-            position.mode != "PAPER" ||
-            position.status !in setOf("OPEN", "EXIT_REQUESTED", "EXIT_BLOCKED")
-        ) {
-            null
-        } else {
-            position.copy(
-                status = "EXIT_REQUESTED",
-                exitReason = "EMERGENCY_EXIT",
-                updatedAtMillis = nowMillis,
-            )
-        }
+    maximumQuoteAgeMillis: Long,
+): Long? {
+    if (positions.isEmpty()) return null
+    var total = 0L
+    positions.forEach { position ->
+        val quote = position.freshSellQuoteLamports(nowMillis, maximumQuoteAgeMillis) ?: return null
+        total =
+            try {
+                Math.addExact(total, Math.subtractExact(quote, position.netInputLamports))
+            } catch (_: ArithmeticException) {
+                return null
+            }
     }
+    return total
+}
 
 private fun formatSignedSol(lamports: Long): String {
     val sol =

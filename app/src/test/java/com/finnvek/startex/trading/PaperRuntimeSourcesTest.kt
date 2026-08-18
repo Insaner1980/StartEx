@@ -252,6 +252,7 @@ class PaperRuntimeSourcesTest {
         token2022ExtensionProof = extensionProof,
     )
 
+    // CPD-OFF
     private fun token(
         program: String = LEGACY_TOKEN_PROGRAM_ID,
         liquidityUsd: BigDecimal = BigDecimal("1000"),
@@ -290,6 +291,7 @@ class PaperRuntimeSourcesTest {
         updatedAtMillis = NOW.minusSeconds(1).toEpochMilli(),
     )
 
+    // CPD-ON
     private fun riskSource(
         runtime: PaperRiskRuntimeSnapshot?,
         rate: PaperSolEurRate? = PaperSolEurRate(BigDecimal("250.123"), NOW),
@@ -392,6 +394,7 @@ class PaperRuntimeSourcesTest {
             createdAtMillis = NOW.toEpochMilli(),
         )
 
+    // CPD-OFF
     private fun risk() =
         RiskConfigEntity(
             version = 1,
@@ -418,6 +421,7 @@ class PaperRuntimeSourcesTest {
             createdAtMillis = NOW.toEpochMilli(),
         )
 
+    // CPD-ON
     private fun Instant.epochDay(): Long = atOffset(java.time.ZoneOffset.UTC).toLocalDate().toEpochDay()
 
     private companion object {

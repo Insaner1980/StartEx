@@ -1,6 +1,8 @@
 package com.finnvek.startex.ui
 
 import android.app.Application
+import androidx.annotation.StringRes
+import androidx.compose.runtime.Stable
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.finnvek.startex.R
@@ -20,6 +22,7 @@ import com.finnvek.startex.data.local.TradeExportRow
 import com.finnvek.startex.data.local.TrustedAddressEntity
 import com.finnvek.startex.data.local.WalletProfileEntity
 import com.finnvek.startex.data.local.WalletSecretEnvelopeEntity
+import com.finnvek.startex.data.local.isFreshHealthy
 import com.finnvek.startex.data.settings.AppSettings
 import com.finnvek.startex.data.settings.OperatingMode
 import com.finnvek.startex.device.DeviceHealthSnapshot
@@ -39,8 +42,10 @@ import com.finnvek.startex.security.PreparedCipherOperation
 import com.finnvek.startex.security.SecretEnvelope
 import com.finnvek.startex.security.TrustedAddressMutation
 import com.finnvek.startex.security.TrustedAddressPolicy
+import com.finnvek.startex.security.WalletAccessMode
 import com.finnvek.startex.security.WalletAccessPolicy
 import com.finnvek.startex.security.clearSecret
+import com.finnvek.startex.security.persistedWalletAccessMode
 import com.finnvek.startex.service.AppNotificationDispatcher
 import com.finnvek.startex.service.SessionHeartbeatFreshnessPolicy
 import com.finnvek.startex.wallet.LocalWallet
@@ -58,20 +63,22 @@ import com.finnvek.startex.wallet.SolanaAddressValidator
 import com.finnvek.startex.wallet.SolanaWalletDerivationPath
 import com.finnvek.startex.wallet.WalletSecretCodec
 import com.finnvek.startex.wallet.WalletTransferCoordinator
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
@@ -82,7 +89,12 @@ import java.math.BigDecimal
 import java.math.RoundingMode
 
 private const val SOL_DECIMAL_PLACES = 9
+private const val HEALTHY = "HEALTHY"
+private val REQUIRED_HEALTH_PROVIDERS = ProviderId.entries.toSet()
+private val STARTUP_TEST_PROVIDERS = setOf(ProviderId.HELIUS, ProviderId.JUPITER, ProviderId.KRAKEN)
 
+@Stable
+@Suppress("TooManyFunctions")
 class StartExViewModel(
     application: Application,
 ) : AndroidViewModel(application) {
@@ -115,8 +127,8 @@ class StartExViewModel(
     private val _configurationSave = MutableStateFlow<ConfigurationSaveState>(ConfigurationSaveState.Idle)
     val configurationSave: StateFlow<ConfigurationSaveState> = _configurationSave.asStateFlow()
 
-    private val _events = MutableSharedFlow<StartExUiEvent>(extraBufferCapacity = 1)
-    val events = _events.asSharedFlow()
+    private val _events = Channel<StartExUiEvent>(Channel.BUFFERED)
+    val events = _events.receiveAsFlow()
 
     private var pendingWallet: PendingWallet? = null
     private var runtimeWallet: LocalWallet? = null
@@ -130,11 +142,15 @@ class StartExViewModel(
     private var transferReconciliationJob: Job? = null
     private var walletDataStaleJob: Job? = null
     private var lockAfterTransfer = false
+    private var walletLockGeneration = 0L
     private var pendingSecurityRewrap: PendingSecurityRewrap? = null
     private var pendingSellPositionId: String? = null
     private var emergencyExitAuthenticationPending = false
     private var walletCreationAuthenticationPending = false
     private var recoveryAuthenticationPending = false
+    private var pendingAuthenticationRequest: StartExUiEvent.Authenticate? = null
+    private var observedDemoMode = false
+    private var pendingDemoMode: Boolean? = null
 
     init {
         viewModelScope.launch {
@@ -171,23 +187,42 @@ class StartExViewModel(
                 }
         }
         viewModelScope.launch {
-            app.settings.settings.collectLatest { settings ->
-                if (settings.unattendedMode && !settings.demoMode && runtimeWallet == null) {
-                    unlockUnattendedWalletOnStartup()
+            combine(
+                app.settings.settings,
+                app.repository.observeWalletSecretEnvelopeAccessMode(),
+            ) { settings, storedWalletAccessMode -> settings to persistedWalletAccessMode(storedWalletAccessMode) }
+                .collectLatest { (settings, walletAccessMode) ->
+                    observedDemoMode = settings.demoMode
+                    if (pendingDemoMode == settings.demoMode) pendingDemoMode = null
+                    val unattended = walletAccessMode == WalletAccessMode.UNATTENDED
+                    if (settings.unattendedMode != unattended) {
+                        runCatching { app.settings.setSecurityMode(unattended) }
+                    }
+                    if (settings.demoMode) {
+                        transferReconciliationJob?.cancel()
+                        lockWalletNow()
+                    } else if (unattended && runtimeWallet == null) {
+                        unlockUnattendedWalletOnStartup()
+                    }
                 }
-            }
         }
     }
+
+    private val walletStorage =
+        combine(
+            app.repository.observeWalletProfile(),
+            app.repository.observeWalletSecretEnvelopeAccessMode(),
+        ) { wallet, accessMode -> wallet to accessMode }
 
     private val setup =
         combine(
             app.settings.settings,
-            app.repository.observeWalletProfile(),
+            walletStorage,
             app.repository.observeProviderHealth(),
             app.repository.observeRisks(),
             app.repository.observeStrategies(),
-        ) { settings, wallet, providers, risks, strategies ->
-            SetupState(settings, wallet, providers, risks, strategies)
+        ) { settings, walletStorage, providers, risks, strategies ->
+            SetupState(settings, walletStorage.first, walletStorage.second, providers, risks, strategies)
         }
 
     private val content =
@@ -228,9 +263,17 @@ class StartExViewModel(
             toState(setup, runtime, content, transient, ledger)
         }
 
+    private val freshnessClock =
+        flow {
+            while (true) {
+                emit(System.currentTimeMillis())
+                delay(1_000)
+            }
+        }
+
     val state: StateFlow<PersistedAppState> =
-        combine(baseState, deviceHealth) { current, health ->
-            current.copy(deviceHealth = health)
+        combine(baseState, deviceHealth, freshnessClock) { current, health, now ->
+            current.withProviderFreshness(now).copy(deviceHealth = health)
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -265,9 +308,13 @@ class StartExViewModel(
 
     fun beginWalletCreation() {
         if (blockDemoAction()) return
+        if (state.value.walletAddress != null) {
+            message.value = R.string.wallet_replacement_unsupported
+            return
+        }
         if (walletCreationAuthenticationPending) return
         walletCreationAuthenticationPending = true
-        if (!_events.tryEmit(StartExUiEvent.Authenticate(AuthenticationPurpose.CreateWallet))) {
+        if (!_events.trySend(StartExUiEvent.Authenticate(AuthenticationPurpose.CreateWallet)).isSuccess) {
             walletCreationAuthenticationPending = false
             message.value = R.string.authentication_failed
         }
@@ -281,6 +328,10 @@ class StartExViewModel(
         viewModelScope.launch(Dispatchers.Default) {
             runCatching {
                 val created = walletFactory.create()
+                if (state.value.demoMode) {
+                    created.close()
+                    return@runCatching
+                }
                 val challengeMnemonic = created.mnemonic
                 val challenge =
                     try {
@@ -348,6 +399,10 @@ class StartExViewModel(
         viewModelScope.launch(Dispatchers.Default) {
             runCatching {
                 val wallet = walletFactory.restore(input)
+                if (state.value.demoMode) {
+                    wallet.close()
+                    return@runCatching
+                }
                 val pending = RestoredPendingWallet(wallet, input)
                 pendingWallet = pending
                 replaceWalletSetup(
@@ -361,13 +416,18 @@ class StartExViewModel(
         }
     }
 
-    fun requestWalletSave() {
+    fun requestWalletSave(restoredBackupConfirmed: Boolean) {
         if (blockDemoAction()) return
-        if (pendingWallet == null) return
+        val pending = pendingWallet ?: return
+        if (pending is RestoredPendingWallet && !restoredBackupConfirmed) return
+        if (state.value.walletAddress?.let { it != pending.publicAddress } == true) {
+            message.value = R.string.wallet_replacement_unsupported
+            return
+        }
         runCatching {
             AndroidKeystoreSecretCipher.secureSession().prepareEncryption()
         }.onSuccess { operation ->
-            _events.tryEmit(
+            _events.trySend(
                 StartExUiEvent.Authenticate(
                     purpose = AuthenticationPurpose.SaveWallet,
                     operation = operation,
@@ -395,7 +455,7 @@ class StartExViewModel(
                 val cipher = cipherFor(stored.accessMode)
                 val operation = cipher.prepareDecryption(stored.envelope)
                 if (cipher.requiresBiometricAuthentication) {
-                    _events.emit(
+                    _events.send(
                         StartExUiEvent.Authenticate(
                             purpose = AuthenticationPurpose.UnlockWallet,
                             operation = operation,
@@ -419,6 +479,7 @@ class StartExViewModel(
     }
 
     private fun lockWalletNow() {
+        walletLockGeneration += 1
         lockAfterTransfer = false
         dismissWalletOverlay()
         runtimeWallet?.close()
@@ -443,7 +504,7 @@ class StartExViewModel(
                 val cipher = cipherFor(stored.accessMode)
                 if (cipher.requiresBiometricAuthentication) {
                     val operation = cipher.prepareDecryption(stored.envelope)
-                    _events.emit(
+                    _events.send(
                         StartExUiEvent.Authenticate(
                             purpose = AuthenticationPurpose.RevealMnemonic,
                             operation = operation,
@@ -451,7 +512,7 @@ class StartExViewModel(
                     )
                 } else {
                     pendingRevealEnvelope = stored
-                    _events.emit(StartExUiEvent.Authenticate(AuthenticationPurpose.RevealMnemonic))
+                    _events.send(StartExUiEvent.Authenticate(AuthenticationPurpose.RevealMnemonic))
                 }
             }.onFailure {
                 message.value = R.string.wallet_reveal_failed
@@ -490,7 +551,7 @@ class StartExViewModel(
         pendingTrustedAddressDeleteId = null
         pendingTrustedAddressUnlockId = null
         pendingTrustedAddress = PendingTrustedAddress(label.trim(), address.trim(), locked)
-        _events.tryEmit(StartExUiEvent.Authenticate(AuthenticationPurpose.AddTrustedAddress))
+        _events.trySend(StartExUiEvent.Authenticate(AuthenticationPurpose.AddTrustedAddress))
     }
 
     fun requestDeleteTrustedAddress(
@@ -506,7 +567,7 @@ class StartExViewModel(
         pendingTrustedAddress = null
         pendingTrustedAddressUnlockId = null
         pendingTrustedAddressDeleteId = id
-        _events.tryEmit(StartExUiEvent.Authenticate(AuthenticationPurpose.DeleteTrustedAddress))
+        _events.trySend(StartExUiEvent.Authenticate(AuthenticationPurpose.DeleteTrustedAddress))
     }
 
     fun requestUnlockTrustedAddress(
@@ -522,7 +583,7 @@ class StartExViewModel(
         pendingTrustedAddress = null
         pendingTrustedAddressDeleteId = null
         pendingTrustedAddressUnlockId = id
-        _events.tryEmit(StartExUiEvent.Authenticate(AuthenticationPurpose.UnlockTrustedAddress))
+        _events.trySend(StartExUiEvent.Authenticate(AuthenticationPurpose.UnlockTrustedAddress))
     }
 
     fun prepareSolTransfer(
@@ -534,12 +595,13 @@ class StartExViewModel(
             return
         }
         val current = state.value
-        if (current.monitorState !in setOf(MonitorState.Stopped, MonitorState.Paused)) {
-            _walletTransfer.value = WalletTransferState.Failed(R.string.transfer_pause_required)
-            return
-        }
-        if (current.openPositions.isNotEmpty()) {
-            _walletTransfer.value = WalletTransferState.Failed(R.string.transfer_open_positions_blocked)
+        val stateBlockMessage =
+            manualTransferStateBlockMessage(
+                current.monitorState,
+                current.openPositions.isNotEmpty(),
+            )
+        if (stateBlockMessage != null) {
+            _walletTransfer.value = WalletTransferState.Failed(stateBlockMessage)
             return
         }
         val destination =
@@ -564,7 +626,14 @@ class StartExViewModel(
         _walletTransfer.value = WalletTransferState.Preparing
         transferJob =
             viewModelScope.launch {
-                val reconciled = runCatching { reconcileUnresolvedManualTransfer() }.getOrDefault(false)
+                val reconciled =
+                    try {
+                        reconcileUnresolvedManualTransfer()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: RuntimeException) {
+                        false
+                    }
                 if (!reconciled) {
                     if (transferReconciliationJob?.isActive != true) {
                         _walletTransfer.value =
@@ -621,6 +690,17 @@ class StartExViewModel(
     fun requestSolTransferSubmit(finalCharacters: String) {
         val review = _walletTransfer.value as? WalletTransferState.Review ?: return
         if (pendingTransfer == null || transferAuthenticationPending) return
+        val current = state.value
+        val stateBlockMessage =
+            manualTransferStateBlockMessage(
+                current.monitorState,
+                current.openPositions.isNotEmpty(),
+            )
+        if (stateBlockMessage != null) {
+            clearPendingTransfer()
+            _walletTransfer.value = WalletTransferState.Failed(stateBlockMessage)
+            return
+        }
         if (
             review.requiresAddressVerification &&
             finalCharacters != review.destinationAddress.takeLast(4)
@@ -629,7 +709,7 @@ class StartExViewModel(
             return
         }
         transferAuthenticationPending = true
-        if (!_events.tryEmit(StartExUiEvent.Authenticate(AuthenticationPurpose.SubmitTransfer))) {
+        if (!_events.trySend(StartExUiEvent.Authenticate(AuthenticationPurpose.SubmitTransfer)).isSuccess) {
             transferAuthenticationPending = false
             message.value = R.string.authentication_failed
         }
@@ -714,15 +794,21 @@ class StartExViewModel(
 
     fun setDemoMode(enabled: Boolean) {
         val current = state.value
-        if (current.demoMode == enabled) return
+        if ((pendingDemoMode ?: observedDemoMode) == enabled) return
         if (enabled && current.monitorState != MonitorState.Stopped) {
             message.value = R.string.demo_requires_stopped_monitoring
             return
         }
+        pendingDemoMode = enabled
         viewModelScope.launch {
             runCatching {
-                if (enabled) lockWalletNow()
                 app.settings.setDemoMode(enabled)
+                if (enabled) {
+                    transferReconciliationJob?.cancel()
+                    lockWalletNow()
+                    app.sessionApiKeys.clear()
+                    activatedProviders.value = emptySet()
+                }
             }.onSuccess {
                 walletBalance.value = WalletBalanceState()
                 walletDataStaleJob?.cancel()
@@ -730,6 +816,7 @@ class StartExViewModel(
                 message.value = if (enabled) R.string.demo_enabled else R.string.demo_disabled
                 if (!enabled) unlockUnattendedWalletOnStartup()
             }.onFailure {
+                pendingDemoMode = null
                 message.value = R.string.demo_change_failed
             }
         }
@@ -780,7 +867,7 @@ class StartExViewModel(
                         AndroidKeystoreSecretCipher.secureSession().prepareEncryption()
                     }
                 pendingSecurityRewrap = PendingSecurityRewrap(profile, stored, targetMode)
-                _events.emit(
+                _events.send(
                     StartExUiEvent.Authenticate(
                         purpose = AuthenticationPurpose.ChangeSecurityMode,
                         operation = operation,
@@ -804,7 +891,9 @@ class StartExViewModel(
         if (walletBalance.value.loading) return
         walletBalance.value = walletBalance.value.copy(loading = true, error = null)
         viewModelScope.launch {
-            when (val result = app.heliusRpc.getBalance(address)) {
+            val result = app.heliusRpc.getBalance(address)
+            if (state.value.demoMode) return@launch
+            when (result) {
                 is ProviderResult.Success -> {
                     walletBalance.value =
                         WalletBalanceState(
@@ -850,6 +939,7 @@ class StartExViewModel(
                     val activity = async { app.heliusRpc.getSignaturesForAddress(address) }
                     holdings.await() to activity.await()
                 }
+            if (state.value.demoMode) return@launch
             if (
                 holdingsResult is ProviderResult.Success &&
                 activityResult is ProviderResult.Success
@@ -924,6 +1014,7 @@ class StartExViewModel(
                         return@launch
                     }
                 }
+            if (state.value.demoMode) return@launch
             when (result) {
                 is ProviderResult.Success -> {
                     saveProviderHealth(provider, result.receivedAtMillis, null)
@@ -1013,35 +1104,50 @@ class StartExViewModel(
         viewModelScope.launch {
             ensureDefaultConfiguration()
             val current = state.value
-            if (current.mode != TradingMode.Paper || current.monitorState != MonitorState.Stopped) return@launch
-            _events.emit(StartExUiEvent.StartMonitoringService)
+            if (
+                current.demoMode ||
+                current.mode != TradingMode.Paper ||
+                current.monitorState != MonitorState.Stopped
+            ) {
+                return@launch
+            }
+            _events.send(StartExUiEvent.StartMonitoringService)
         }
     }
 
     fun pauseMonitoring() {
         if (state.value.demoMode) return
         if (state.value.monitorState == MonitorState.Running) {
-            _events.tryEmit(StartExUiEvent.PauseMonitoringService)
+            _events.trySend(StartExUiEvent.PauseMonitoringService)
         }
     }
 
     fun resumeMonitoring() {
         if (state.value.demoMode) return
         if (state.value.monitorState == MonitorState.Paused) {
-            _events.tryEmit(StartExUiEvent.ResumeMonitoringService)
+            if (state.value.secureSession) {
+                requestMonitoringRecoveryAuthentication()
+            } else {
+                _events.trySend(StartExUiEvent.ResumeMonitoringService)
+            }
         }
     }
 
     fun stopMonitoring() {
         if (state.value.demoMode) return
-        _events.tryEmit(StartExUiEvent.StopMonitoringService)
+        _events.trySend(StartExUiEvent.StopMonitoringService)
     }
 
     fun recoverMonitoring() {
         if (state.value.demoMode) return
         if (state.value.monitorState != MonitorState.NeedsAttention || recoveryAuthenticationPending) return
+        requestMonitoringRecoveryAuthentication()
+    }
+
+    private fun requestMonitoringRecoveryAuthentication() {
+        if (recoveryAuthenticationPending) return
         recoveryAuthenticationPending = true
-        if (!_events.tryEmit(StartExUiEvent.Authenticate(AuthenticationPurpose.RecoverMonitoring))) {
+        if (!_events.trySend(StartExUiEvent.Authenticate(AuthenticationPurpose.RecoverMonitoring)).isSuccess) {
             recoveryAuthenticationPending = false
             message.value = R.string.authentication_failed
         }
@@ -1060,7 +1166,7 @@ class StartExViewModel(
             return
         }
         pendingSellPositionId = positionId
-        if (!_events.tryEmit(StartExUiEvent.Authenticate(AuthenticationPurpose.SellNow))) {
+        if (!_events.trySend(StartExUiEvent.Authenticate(AuthenticationPurpose.SellNow)).isSuccess) {
             pendingSellPositionId = null
             message.value = R.string.authentication_failed
         }
@@ -1075,7 +1181,7 @@ class StartExViewModel(
             message.value = R.string.stop_after_close_unavailable
             return
         }
-        _events.tryEmit(StartExUiEvent.StopAfterClose)
+        _events.trySend(StartExUiEvent.StopAfterClose)
     }
 
     fun requestEmergencyExit() {
@@ -1090,16 +1196,18 @@ class StartExViewModel(
             return
         }
         emergencyExitAuthenticationPending = true
-        if (!_events.tryEmit(StartExUiEvent.Authenticate(AuthenticationPurpose.EmergencyExit))) {
+        if (!_events.trySend(StartExUiEvent.Authenticate(AuthenticationPurpose.EmergencyExit)).isSuccess) {
             emergencyExitAuthenticationPending = false
             message.value = R.string.authentication_failed
         }
     }
 
     fun exportHistory(json: Boolean) {
+        if (blockDemoAction()) return
         viewModelScope.launch {
             val text = if (json) app.repository.exportHistoryJson() else app.repository.exportHistoryCsv()
-            _events.emit(
+            if (!historyExportAllowed) return@launch
+            _events.send(
                 StartExUiEvent.ShareText(
                     title = if (json) "StartEx history JSON" else "StartEx history CSV",
                     text = text,
@@ -1109,7 +1217,25 @@ class StartExViewModel(
         }
     }
 
+    internal val historyExportAllowed: Boolean
+        get() = !demoModeActiveOrPending()
+
+    internal val authenticationInProgress: Boolean
+        get() = pendingAuthenticationRequest != null
+
+    internal fun onAuthenticationPromptStarted(request: StartExUiEvent.Authenticate) {
+        pendingAuthenticationRequest = request
+    }
+
+    internal fun takePendingAuthenticationRequest(): StartExUiEvent.Authenticate? =
+        pendingAuthenticationRequest.also { pendingAuthenticationRequest = null }
+
     fun onAuthenticationSucceeded(request: StartExUiEvent.Authenticate) {
+        if (demoModeActiveOrPending()) {
+            onAuthenticationFailed()
+            message.value = R.string.demo_action_unavailable
+            return
+        }
         when (request.purpose) {
             AuthenticationPurpose.CreateWallet -> {
                 createWalletAfterAuthentication()
@@ -1157,7 +1283,7 @@ class StartExViewModel(
                     return
                 }
                 walletAccess.onAuthenticationSucceeded()
-                _events.tryEmit(StartExUiEvent.SellNow(positionId))
+                _events.trySend(StartExUiEvent.SellNow(positionId))
             }
 
             AuthenticationPurpose.EmergencyExit -> {
@@ -1168,23 +1294,25 @@ class StartExViewModel(
                     return
                 }
                 walletAccess.onAuthenticationSucceeded()
-                _events.tryEmit(StartExUiEvent.EmergencyExit)
+                _events.trySend(StartExUiEvent.EmergencyExit)
             }
 
             AuthenticationPurpose.RecoverMonitoring -> {
                 if (!recoveryAuthenticationPending) return
                 recoveryAuthenticationPending = false
-                _events.tryEmit(StartExUiEvent.RecoverMonitoringService)
+                _events.trySend(StartExUiEvent.RecoverMonitoringService)
             }
         }
     }
 
     fun onAuthenticationFailed() {
+        pendingAuthenticationRequest = null
         walletAccess.onAuthenticationRejected()
         walletCreationAuthenticationPending = false
         pendingTrustedAddress = null
         pendingTrustedAddressDeleteId = null
         pendingTrustedAddressUnlockId = null
+        pendingRevealEnvelope = null
         pendingSecurityRewrap = null
         pendingSellPositionId = null
         emergencyExitAuthenticationPending = false
@@ -1225,7 +1353,7 @@ class StartExViewModel(
                                     updatedAtMillis = now,
                                 ),
                         )
-                        app.settings.setSecurityMode(unattended = false)
+                        runCatching { app.settings.setSecurityMode(unattended = false) }
                     } finally {
                         ciphertext.clearSecret()
                         iv.clearSecret()
@@ -1253,10 +1381,16 @@ class StartExViewModel(
     }
 
     private fun completeSecureUnlock(operation: PreparedCipherOperation) {
+        val expectedLockGeneration = walletLockGeneration
         viewModelScope.launch {
             val stored = loadWalletEnvelope() ?: return@launch
             if (stored.accessMode != KeystoreAccessMode.BIOMETRIC_EACH_USE) return@launch
-            unlockWallet(AndroidKeystoreSecretCipher.secureSession(), operation, stored.envelope)
+            unlockWallet(
+                cipher = AndroidKeystoreSecretCipher.secureSession(),
+                operation = operation,
+                envelope = stored.envelope,
+                expectedLockGeneration = expectedLockGeneration,
+            )
         }
     }
 
@@ -1306,20 +1440,11 @@ class StartExViewModel(
                                         keystoreAccessMode = pending.targetMode.name,
                                         updatedAtMillis = System.currentTimeMillis(),
                                     )
-                                if (pending.targetMode == KeystoreAccessMode.UNATTENDED) {
-                                    app.settings.setSecurityMode(unattended = true)
-                                    var walletSaved = false
-                                    try {
-                                        app.repository.saveWallet(pending.profile, targetEnvelope)
-                                        walletSaved = true
-                                    } finally {
-                                        if (!walletSaved) {
-                                            runCatching { app.settings.setSecurityMode(unattended = false) }
-                                        }
-                                    }
-                                } else {
-                                    app.repository.saveWallet(pending.profile, targetEnvelope)
-                                    app.settings.setSecurityMode(unattended = false)
+                                app.repository.saveWallet(pending.profile, targetEnvelope)
+                                runCatching {
+                                    app.settings.setSecurityMode(
+                                        unattended = pending.targetMode == KeystoreAccessMode.UNATTENDED,
+                                    )
                                 }
                             } finally {
                                 ciphertext.clearSecret()
@@ -1370,6 +1495,7 @@ class StartExViewModel(
         operation: PreparedCipherOperation,
         envelope: SecretEnvelope,
         announce: Boolean = true,
+        expectedLockGeneration: Long = walletLockGeneration,
     ) {
         runCatching {
             val encoded = cipher.decrypt(operation, envelope)
@@ -1380,6 +1506,10 @@ class StartExViewModel(
                 phrase.fill('0')
             }
         }.onSuccess { wallet ->
+            if (state.value.demoMode || walletLockGeneration != expectedLockGeneration) {
+                wallet.close()
+                return@onSuccess
+            }
             runtimeWallet?.close()
             runtimeWallet = wallet
             walletAccess.onAuthenticationSucceeded()
@@ -1402,7 +1532,11 @@ class StartExViewModel(
                 val encoded = cipher.decrypt(decryptOperation, stored.envelope)
                 WalletSecretCodec.decodeAndClear(encoded)
             }.onSuccess { phrase ->
-                replaceWalletOverlay(WalletOverlay.RevealedMnemonic(phrase))
+                if (walletUnlocked.value) {
+                    replaceWalletOverlay(WalletOverlay.RevealedMnemonic(phrase))
+                } else {
+                    phrase.fill('0')
+                }
             }.onFailure {
                 message.value = R.string.wallet_reveal_failed
             }
@@ -1482,6 +1616,17 @@ class StartExViewModel(
     private fun submitPendingTransfer() {
         val review = _walletTransfer.value as? WalletTransferState.Review ?: return
         val prepared = pendingTransfer ?: return
+        val current = state.value
+        val stateBlockMessage =
+            manualTransferStateBlockMessage(
+                current.monitorState,
+                current.openPositions.isNotEmpty(),
+            )
+        if (stateBlockMessage != null) {
+            clearPendingTransfer()
+            _walletTransfer.value = WalletTransferState.Failed(stateBlockMessage)
+            return
+        }
         val wallet =
             runtimeWallet ?: run {
                 clearPendingTransfer()
@@ -1519,9 +1664,15 @@ class StartExViewModel(
                                     failureCode = null,
                                     nowMillis = System.currentTimeMillis(),
                                 )
-                            runCatching { app.repository.saveBlockchainTransaction(record) }
-                                .onSuccess { writeAheadRecord = record }
-                                .isSuccess
+                            try {
+                                app.repository.saveBlockchainTransaction(record)
+                                writeAheadRecord = record
+                                true
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: RuntimeException) {
+                                false
+                            }
                         }
                     when (result) {
                         is SolTransferResult.Submitted -> {
@@ -1809,40 +1960,9 @@ class StartExViewModel(
                 activatedProviders.value = activatedProviders.value - provider
                 return@forEach
             }
-            runCatching {
-                val stored =
-                    app.repository.providerCredential(provider.name)
-                        ?: error("Stored provider credential is missing")
-                val accessMode =
-                    runCatching { KeystoreAccessMode.valueOf(stored.keystoreAccessMode) }
-                        .getOrElse { error("Unsupported provider credential access mode") }
-                require(accessMode == KeystoreAccessMode.UNATTENDED) {
-                    "Provider credential cannot be restored unattended"
-                }
-                val storedIv = stored.apiKeyIv
-                val storedCiphertext = stored.encryptedApiKey
-                val envelope =
-                    try {
-                        SecretEnvelope(
-                            version = stored.secretEnvelopeVersion,
-                            publicAddress = providerEnvelopeId(provider),
-                            iv = storedIv,
-                            ciphertext = storedCiphertext,
-                        )
-                    } finally {
-                        storedIv.clearSecret()
-                        storedCiphertext.clearSecret()
-                    }
-                val cipher = AndroidKeystoreSecretCipher.unattended()
-                val encoded = cipher.decrypt(cipher.prepareDecryption(envelope), envelope)
-                val decoded = WalletSecretCodec.decodeAndClear(encoded)
-                try {
-                    app.sessionApiKeys.put(provider, decoded)
-                    activatedProviders.value = activatedProviders.value + provider
-                } finally {
-                    decoded.fill('0')
-                }
-            }.onFailure {
+            if (app.restoreSessionApiKey(provider)) {
+                activatedProviders.value = activatedProviders.value + provider
+            } else {
                 app.sessionApiKeys.remove(provider)
                 activatedProviders.value = activatedProviders.value - provider
                 message.value = R.string.provider_key_restore_failed
@@ -1897,6 +2017,9 @@ class StartExViewModel(
         ledger: LedgerState,
     ): PersistedAppState {
         val demo = setup.settings.demoMode
+        val unattended =
+            persistedWalletAccessMode(setup.walletAccessMode) ==
+                WalletAccessMode.UNATTENDED
         val balance = if (demo) DEMO_WALLET_BALANCE else transient.balance
         val chainData = if (demo) DEMO_WALLET_DATA else transient.walletData
         val configured =
@@ -1920,13 +2043,13 @@ class StartExViewModel(
             loaded = runtime.loaded,
             onboardingComplete = setup.settings.onboardingComplete,
             mode =
-                if (setup.settings.operatingMode == OperatingMode.PAPER) {
+                if (demo || setup.settings.operatingMode == OperatingMode.PAPER) {
                     TradingMode.Paper
                 } else {
                     TradingMode.Live
                 },
-            secureSession = setup.settings.secureSession,
-            unattendedMode = setup.settings.unattendedMode,
+            secureSession = !unattended,
+            unattendedMode = unattended,
             demoMode = demo,
             walletAddress = if (demo) null else setup.wallet?.publicAddress,
             walletBackupConfirmed = setup.wallet?.backupConfirmedAtMillis != null,
@@ -1987,9 +2110,9 @@ class StartExViewModel(
         successAtMillis: Long?,
         error: ProviderError?,
     ) {
+        if (state.value.demoMode) return
         val now = System.currentTimeMillis()
-        val previous = state.value.providerHealth.firstOrNull { it.provider == provider.name }
-        app.repository.saveProviderHealth(
+        app.repository.updateProviderHealth(provider.name) { previous ->
             ProviderHealthEntity(
                 provider = provider.name,
                 state =
@@ -2005,8 +2128,8 @@ class StartExViewModel(
                 retryAfterMillis = error?.retryAfterMillis,
                 lastFailureCode = error?.javaClass?.simpleName,
                 updatedAtMillis = now,
-            ),
-        )
+            )
+        }
     }
 
     private suspend fun refreshFiatBalance(
@@ -2060,53 +2183,17 @@ class StartExViewModel(
     }
 
     private fun blockDemoAction(): Boolean {
-        if (!state.value.demoMode) return false
+        if (!demoModeActiveOrPending()) return false
         message.value = R.string.demo_action_unavailable
         return true
     }
 
-    private fun transferFailureMessage(reason: SolTransferFailureReason): Int =
-        when (reason) {
-            SolTransferFailureReason.INVALID_SOURCE,
-            SolTransferFailureReason.INVALID_DESTINATION,
-            SolTransferFailureReason.INVALID_AMOUNT,
-            SolTransferFailureReason.INVALID_FEE_CAP,
-            SolTransferFailureReason.INVALID_RESERVE,
-            -> R.string.transfer_invalid_request
-
-            SolTransferFailureReason.DESTINATION_LOOKUP_FAILED -> R.string.transfer_destination_check_failed
-
-            SolTransferFailureReason.EXECUTABLE_DESTINATION,
-            SolTransferFailureReason.NON_SYSTEM_DESTINATION,
-            -> R.string.transfer_unsafe_destination
-
-            SolTransferFailureReason.BALANCE_LOOKUP_FAILED -> R.string.transfer_balance_check_failed
-
-            SolTransferFailureReason.INSUFFICIENT_BALANCE -> R.string.transfer_insufficient_balance
-
-            SolTransferFailureReason.BLOCKHASH_LOOKUP_FAILED,
-            SolTransferFailureReason.FEE_LOOKUP_FAILED,
-            -> R.string.transfer_network_data_failed
-
-            SolTransferFailureReason.FEE_CAP_EXCEEDED -> R.string.transfer_fee_cap_exceeded
-
-            SolTransferFailureReason.TRANSACTION_CONSTRUCTION_FAILED,
-            SolTransferFailureReason.SIMULATION_FAILED,
-            SolTransferFailureReason.SIMULATION_REJECTED,
-            -> R.string.transfer_safety_check_failed
-
-            SolTransferFailureReason.SIGNER_MISMATCH -> R.string.transfer_signer_mismatch
-
-            SolTransferFailureReason.SIGNING_FAILED -> R.string.transfer_signing_failed
-
-            SolTransferFailureReason.SUBMISSION_REJECTED -> R.string.transfer_submission_rejected
-
-            SolTransferFailureReason.WRITE_AHEAD_FAILED -> R.string.transfer_write_ahead_failed
-
-            SolTransferFailureReason.PREPARED_TRANSFER_CONSUMED -> R.string.transfer_already_consumed
-        }
+    private fun demoModeActiveOrPending(): Boolean = pendingDemoMode == true || observedDemoMode || state.value.demoMode
 
     override fun onCleared() {
+        pendingAuthenticationRequest = null
+        _events.cancel()
+        walletLockGeneration += 1
         walletDataStaleJob?.cancel()
         transferReconciliationJob?.cancel()
         pendingSecurityRewrap = null
@@ -2121,6 +2208,7 @@ class StartExViewModel(
     private data class SetupState(
         val settings: AppSettings,
         val wallet: WalletProfileEntity?,
+        val walletAccessMode: String?,
         val providers: List<ProviderHealthEntity>,
         val risks: List<RiskConfigEntity>,
         val strategies: List<StrategyConfigEntity>,
@@ -2226,7 +2314,6 @@ class StartExViewModel(
         const val WALLET_PROFILE_ID = 1L
         const val RECENT_EVENT_LIMIT = 100
         const val TRADE_HISTORY_LIMIT = 250
-        const val HEALTHY = "HEALTHY"
         val ACTIVE_SESSION_STATES = listOf("RUNNING", "PAUSED", "PROTECTING", "NEEDS_ATTENTION")
         val OPEN_POSITION_STATES =
             listOf(
@@ -2245,8 +2332,6 @@ class StartExViewModel(
                 "EXPIRED",
                 "ENTERED",
             )
-        val REQUIRED_HEALTH_PROVIDERS = ProviderId.entries.toSet()
-        val STARTUP_TEST_PROVIDERS = setOf(ProviderId.HELIUS, ProviderId.JUPITER, ProviderId.KRAKEN)
         val UNRESOLVED_MANUAL_TRANSFER_STATES =
             listOf(
                 "SIGNED_NOT_BROADCAST",
@@ -2294,6 +2379,74 @@ class StartExViewModel(
         fun providerEnvelopeId(provider: ProviderId) = "provider:${provider.name}"
     }
 }
+
+private fun PersistedAppState.withProviderFreshness(nowMillis: Long): PersistedAppState {
+    val maximumAgeMillis = risk?.minimumDataFreshnessMillis ?: -1
+    val displayHealth =
+        providerHealth.map { health ->
+            if (health.state == HEALTHY && !health.isFreshHealthy(nowMillis, maximumAgeMillis)) {
+                health.copy(state = "STALE")
+            } else {
+                health
+            }
+        }
+    val freshHealthy =
+        displayHealth
+            .filter { it.state == HEALTHY }
+            .mapTo(mutableSetOf()) { it.provider }
+    return copy(
+        providerHealth = displayHealth,
+        providersHealthy =
+            !demoMode && CredentialProviders.all { it in configuredProviders } &&
+                REQUIRED_HEALTH_PROVIDERS.all { it.name in freshHealthy },
+        providersReadyForStart =
+            !demoMode &&
+                CredentialProviders.all {
+                    it in configuredProviders && it in activatedProviders
+                } && STARTUP_TEST_PROVIDERS.all { it.name in freshHealthy },
+    )
+}
+
+private fun transferFailureMessage(reason: SolTransferFailureReason): Int =
+    when (reason) {
+        SolTransferFailureReason.INVALID_SOURCE,
+        SolTransferFailureReason.INVALID_DESTINATION,
+        SolTransferFailureReason.INVALID_AMOUNT,
+        SolTransferFailureReason.INVALID_FEE_CAP,
+        SolTransferFailureReason.INVALID_RESERVE,
+        -> R.string.transfer_invalid_request
+
+        SolTransferFailureReason.DESTINATION_LOOKUP_FAILED -> R.string.transfer_destination_check_failed
+
+        SolTransferFailureReason.EXECUTABLE_DESTINATION,
+        SolTransferFailureReason.NON_SYSTEM_DESTINATION,
+        -> R.string.transfer_unsafe_destination
+
+        SolTransferFailureReason.BALANCE_LOOKUP_FAILED -> R.string.transfer_balance_check_failed
+
+        SolTransferFailureReason.INSUFFICIENT_BALANCE -> R.string.transfer_insufficient_balance
+
+        SolTransferFailureReason.BLOCKHASH_LOOKUP_FAILED,
+        SolTransferFailureReason.FEE_LOOKUP_FAILED,
+        -> R.string.transfer_network_data_failed
+
+        SolTransferFailureReason.FEE_CAP_EXCEEDED -> R.string.transfer_fee_cap_exceeded
+
+        SolTransferFailureReason.TRANSACTION_CONSTRUCTION_FAILED,
+        SolTransferFailureReason.SIMULATION_FAILED,
+        SolTransferFailureReason.SIMULATION_REJECTED,
+        -> R.string.transfer_safety_check_failed
+
+        SolTransferFailureReason.SIGNER_MISMATCH -> R.string.transfer_signer_mismatch
+
+        SolTransferFailureReason.SIGNING_FAILED -> R.string.transfer_signing_failed
+
+        SolTransferFailureReason.SUBMISSION_REJECTED -> R.string.transfer_submission_rejected
+
+        SolTransferFailureReason.WRITE_AHEAD_FAILED -> R.string.transfer_write_ahead_failed
+
+        SolTransferFailureReason.PREPARED_TRANSFER_CONSUMED -> R.string.transfer_already_consumed
+    }
 
 internal fun SignedSolTransfer.toManualTransferTransaction(
     status: String,
@@ -2388,6 +2541,17 @@ internal fun canRequestEmergencyExit(
         positions.any {
             it.mode == "PAPER" && it.status in setOf("OPEN", "EXIT_REQUESTED", "EXIT_BLOCKED")
         }
+
+@StringRes
+internal fun manualTransferStateBlockMessage(
+    monitorState: MonitorState,
+    hasOpenPositions: Boolean,
+): Int? =
+    when {
+        monitorState !in setOf(MonitorState.Stopped, MonitorState.Paused) -> R.string.transfer_pause_required
+        hasOpenPositions -> R.string.transfer_open_positions_blocked
+        else -> null
+    }
 
 internal fun manualTransferNotificationCode(status: String): String? =
     when (status) {

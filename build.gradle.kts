@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.ktlint) apply false
     alias(libs.plugins.detekt) apply false
     alias(libs.plugins.owasp.dependency.check) apply false
+    alias(libs.plugins.stability.analyzer) apply false
 }
 
 fun org.gradle.api.artifacts.DependencyResolveDetails.enforceSecureTransitiveVersion() {
@@ -14,10 +15,12 @@ fun org.gradle.api.artifacts.DependencyResolveDetails.enforceSecureTransitiveVer
         when {
             requested.group == "io.netty" &&
                 requested.name.startsWith("netty-") &&
-                !requested.name.startsWith("netty-tcnative") -> "4.1.136.Final"
+                !requested.name.startsWith("netty-tcnative") -> "4.1.137.Final"
 
-            requested.group == "org.bouncycastle" -> "1.84"
-            requested.group == "ch.qos.logback" -> "1.5.34"
+            requested.group == "org.bouncycastle" &&
+                requested.name in setOf("bcpkix-jdk18on", "bcprov-jdk18on", "bcutil-jdk18on") -> "1.84"
+            requested.group == "ch.qos.logback" &&
+                requested.name in setOf("logback-classic", "logback-core") -> "1.5.34"
             requested.group == "org.bitbucket.b_c" && requested.name == "jose4j" -> "0.9.6"
             requested.group == "org.jdom" && requested.name == "jdom2" -> "2.0.6.1"
             requested.group == "org.apache.commons" && requested.name == "commons-lang3" -> "3.20.0"
@@ -37,10 +40,12 @@ buildscript {
                 when {
                     requested.group == "io.netty" &&
                         requested.name.startsWith("netty-") &&
-                        !requested.name.startsWith("netty-tcnative") -> "4.1.136.Final"
+                        !requested.name.startsWith("netty-tcnative") -> "4.1.137.Final"
 
-                    requested.group == "org.bouncycastle" -> "1.84"
-                    requested.group == "ch.qos.logback" -> "1.5.34"
+                    requested.group == "org.bouncycastle" &&
+                        requested.name in setOf("bcpkix-jdk18on", "bcprov-jdk18on", "bcutil-jdk18on") -> "1.84"
+                    requested.group == "ch.qos.logback" &&
+                        requested.name in setOf("logback-classic", "logback-core") -> "1.5.34"
                     requested.group == "org.bitbucket.b_c" && requested.name == "jose4j" -> "0.9.6"
                     requested.group == "org.jdom" && requested.name == "jdom2" -> "2.0.6.1"
                     requested.group == "org.apache.commons" && requested.name == "commons-lang3" -> "3.20.0"

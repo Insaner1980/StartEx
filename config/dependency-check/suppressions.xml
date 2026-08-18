@@ -23,8 +23,16 @@
     <cve>CVE-2020-10518</cve>
     <cve>CVE-2020-10519</cve>
   </suppress>
-  <suppress until="2026-08-31Z">
-    <notes>CVE-2026-53914 affects Kotlin build-cache metadata, not the application runtime kotlin-stdlib artifact. Gradle build caching is disabled until stable Kotlin 2.4.20 or newer is available.</notes>
+  <suppress until="2026-11-09Z">
+    <notes>Compose Stability Runtime Android is unrelated to GitHub Enterprise Server; Dependency-Check derives the GitHub CPE from the Maven group prefix.</notes>
+    <packageUrl>pkg:maven/com.github.skydoves/compose-stability-runtime-android@0.6.4</packageUrl>
+    <cve>CVE-2012-2055</cve>
+    <cve>CVE-2020-10517</cve>
+    <cve>CVE-2020-10518</cve>
+    <cve>CVE-2020-10519</cve>
+  </suppress>
+  <suppress until="2026-10-15Z">
+    <notes>CVE-2026-53914 affects Kotlin build-cache metadata, not the application runtime kotlin-stdlib artifact. Gradle build caching remains hard-disabled. Kotlin 2.4.20 stable is planned for September 2026; remove this suppression immediately after a stable fixed Kotlin 2.4.x toolchain passes compatibility validation, and no later than 2026-10-15.</notes>
     <packageUrl>pkg:maven/org.jetbrains.kotlin/kotlin-stdlib@2.3.20</packageUrl>
     <cve>CVE-2026-53914</cve>
   </suppress>

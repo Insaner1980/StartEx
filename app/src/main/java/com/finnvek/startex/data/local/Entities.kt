@@ -229,6 +229,7 @@ data class TokenSnapshotEntity(
             childColumns = ["candidateMint"],
             onDelete = ForeignKey.RESTRICT,
         ),
+        // CPD-OFF
         ForeignKey(
             entity = StrategyConfigEntity::class,
             parentColumns = ["version"],
@@ -241,6 +242,7 @@ data class TokenSnapshotEntity(
             childColumns = ["riskVersion"],
             onDelete = ForeignKey.RESTRICT,
         ),
+        // CPD-ON
     ],
     indices = [
         Index("sessionId"),
@@ -323,6 +325,17 @@ data class PositionEntity(
     val routeAvailable: Boolean,
     val reconciliationState: String,
 )
+
+internal fun PositionEntity.freshSellQuoteLamports(
+    nowMillis: Long,
+    maximumAgeMillis: Long,
+): Long? {
+    if (!routeAvailable || maximumAgeMillis < 0) return null
+    val quote = latestSellQuoteLamports?.takeIf { it > 0 } ?: return null
+    val observedAt = latestSellQuoteAtMillis ?: return null
+    val age = runCatching { Math.subtractExact(nowMillis, observedAt) }.getOrNull() ?: return null
+    return quote.takeIf { age in 0..maximumAgeMillis }
+}
 
 @Entity(
     tableName = "trade_intents",
@@ -472,6 +485,16 @@ data class ProviderHealthEntity(
     val lastFailureCode: String?,
     val updatedAtMillis: Long,
 )
+
+internal fun ProviderHealthEntity.isFreshHealthy(
+    nowMillis: Long,
+    maximumAgeMillis: Long,
+): Boolean {
+    if (state != "HEALTHY" || maximumAgeMillis < 0) return false
+    val successAt = lastSuccessAtMillis ?: return false
+    val age = runCatching { Math.subtractExact(nowMillis, successAt) }.getOrNull() ?: return false
+    return age in 0..maximumAgeMillis
+}
 
 @Entity(
     tableName = "app_events",

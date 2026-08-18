@@ -25,6 +25,9 @@ interface WalletDao {
     @Query("SELECT * FROM wallet_secret_envelopes WHERE walletProfileId = :walletProfileId")
     suspend fun secretEnvelope(walletProfileId: Long = 1): WalletSecretEnvelopeEntity?
 
+    @Query("SELECT keystoreAccessMode FROM wallet_secret_envelopes WHERE walletProfileId = :walletProfileId")
+    fun observeSecretEnvelopeAccessMode(walletProfileId: Long = 1): Flow<String?>
+
     @Query("DELETE FROM wallet_secret_envelopes WHERE walletProfileId = :walletProfileId")
     suspend fun deleteSecretEnvelope(walletProfileId: Long = 1): Int
 
@@ -280,6 +283,23 @@ interface PositionDao {
 
     @Query("SELECT * FROM positions WHERE status IN (:openStates) ORDER BY openedAtMillis")
     suspend fun open(openStates: List<String>): List<PositionEntity>
+
+    @Query(
+        """
+        UPDATE positions
+        SET status = 'EXIT_REQUESTED',
+            exitReason = 'EMERGENCY_EXIT',
+            updatedAtMillis = :nowMillis
+        WHERE sessionId = :sessionId
+          AND mode = 'PAPER'
+          AND status IN (:eligibleStates)
+        """,
+    )
+    suspend fun requestPaperEmergencyExit(
+        sessionId: String,
+        eligibleStates: List<String>,
+        nowMillis: Long,
+    ): Int
 
     @Query("SELECT * FROM positions ORDER BY openedAtMillis, id")
     suspend fun exportAll(): List<PositionEntity>

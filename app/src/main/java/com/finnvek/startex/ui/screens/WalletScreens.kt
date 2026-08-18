@@ -102,7 +102,7 @@ fun WalletFlowScreen(
     onMnemonicSave: () -> Unit,
     onVerifyBackup: (Map<Int, String>) -> Unit,
     onRestore: (CharArray) -> Unit,
-    onSave: () -> Unit,
+    onSave: (Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
     BackHandler(onBack = onCancel)
@@ -118,8 +118,16 @@ fun WalletFlowScreen(
         }
 
         is WalletSetupState.Mnemonic -> {
+            val words =
+                remember(state.phrase) {
+                    state.phrase
+                        .concatToString()
+                        .split(Regex("\\s+"))
+                        .filter(String::isNotBlank)
+                }
             MnemonicBackupScreen(
-                state = state,
+                words = words,
+                publicAddress = state.publicAddress,
                 onContinue = onMnemonicSave,
                 onCancel = onCancel,
             )
@@ -201,8 +209,15 @@ fun WalletOverlayScreen(
         }
 
         is WalletOverlay.RevealedMnemonic -> {
+            val words =
+                remember(overlay.phrase) {
+                    overlay.phrase
+                        .concatToString()
+                        .split(Regex("\\s+"))
+                        .filter(String::isNotBlank)
+                }
             RevealedMnemonicScreen(
-                phrase = overlay.phrase,
+                words = words,
                 onDone = onDismiss,
             )
         }
@@ -211,18 +226,12 @@ fun WalletOverlayScreen(
 
 @Composable
 private fun MnemonicBackupScreen(
-    state: WalletSetupState.Mnemonic,
+    words: List<String>,
+    publicAddress: String,
     onContinue: () -> Unit,
     onCancel: () -> Unit,
 ) {
     var savedOffline by rememberSaveable { mutableStateOf(false) }
-    val words =
-        remember(state.phrase) {
-            state.phrase
-                .concatToString()
-                .split(Regex("\\s+"))
-                .filter(String::isNotBlank)
-        }
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.backup_phrase_title), onCancel)
         Spacer(modifier = Modifier.height(14.dp))
@@ -260,7 +269,7 @@ private fun MnemonicBackupScreen(
             }
         }
         Spacer(modifier = Modifier.height(14.dp))
-        AddressText(state.publicAddress, abbreviated = false)
+        AddressText(publicAddress, abbreviated = false)
         Spacer(modifier = Modifier.height(14.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = savedOffline, onCheckedChange = { savedOffline = it })
@@ -409,10 +418,11 @@ private fun RestoreWalletScreen(
 @Composable
 private fun WalletReviewScreen(
     state: WalletSetupState.ReviewWallet,
-    onSave: () -> Unit,
+    onSave: (Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
-    var confirmed by rememberSaveable { mutableStateOf(false) }
+    var dedicatedWalletConfirmed by rememberSaveable { mutableStateOf(false) }
+    var restoredBackupConfirmed by rememberSaveable { mutableStateOf(false) }
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.wallet_review_title), onCancel)
         Spacer(modifier = Modifier.height(14.dp))
@@ -433,12 +443,28 @@ private fun WalletReviewScreen(
         }
         Spacer(modifier = Modifier.height(14.dp))
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = confirmed, onCheckedChange = { confirmed = it })
+            Checkbox(
+                checked = dedicatedWalletConfirmed,
+                onCheckedChange = { dedicatedWalletConfirmed = it },
+            )
             Text(
                 text = stringResource(R.string.wallet_dedicated_confirmation),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.bodyLarge,
             )
+        }
+        if (state.restored) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(
+                    checked = restoredBackupConfirmed,
+                    onCheckedChange = { restoredBackupConfirmed = it },
+                )
+                Text(
+                    text = stringResource(R.string.restore_backup_confirmation),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodyLarge,
+                )
+            }
         }
         Text(
             text = stringResource(R.string.wallet_save_auth_notice),
@@ -447,8 +473,8 @@ private fun WalletReviewScreen(
             modifier = Modifier.padding(vertical = 12.dp),
         )
         Button(
-            onClick = onSave,
-            enabled = confirmed,
+            onClick = { onSave(restoredBackupConfirmed) },
+            enabled = dedicatedWalletConfirmed && (!state.restored || restoredBackupConfirmed),
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -531,12 +557,16 @@ private fun ReceiveScreen(
         }
         Spacer(modifier = Modifier.height(14.dp))
         SectionCard {
-            SectionHeading(stringResource(R.string.your_solana_address))
+            SectionHeading(
+                stringResource(R.string.your_solana_address),
+                subtitle = stringResource(R.string.network_mainnet),
+            )
             Spacer(modifier = Modifier.height(10.dp))
             AddressText(address, abbreviated = false)
         }
         Spacer(modifier = Modifier.height(12.dp))
         SectionCard {
+            // CPD-OFF
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -591,6 +621,7 @@ private fun ReceiveScreen(
                     color = StartExAmber,
                 )
             }
+            // CPD-ON
             Text(
                 text = stringResource(R.string.fiat_estimate_notice),
                 style = MaterialTheme.typography.bodySmall,
@@ -1385,10 +1416,9 @@ private fun TrustedAddressConfirmationDialog(
 
 @Composable
 private fun RevealedMnemonicScreen(
-    phrase: CharArray,
+    words: List<String>,
     onDone: () -> Unit,
 ) {
-    val words = remember(phrase) { phrase.concatToString().split(Regex("\\s+")).filter(String::isNotBlank) }
     ScreenColumn {
         ScreenHeader(title = stringResource(R.string.recovery_phrase))
         Spacer(modifier = Modifier.height(10.dp))

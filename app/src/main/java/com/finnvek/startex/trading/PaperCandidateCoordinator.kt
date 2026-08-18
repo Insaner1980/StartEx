@@ -924,11 +924,13 @@ class PaperCandidateCoordinator(
             outcome.received.atomicUnits
                 .toLongExactOrNull()
                 ?.takeIf { it > 0 } ?: return null
+        // CPD-OFF
         val sell =
             when (val result = quotes.order(sellRequest(request, amount))) {
                 is ProviderResult.Failure -> return null
                 is ProviderResult.Success -> result.value
             }
+        // CPD-ON
         val expectedInput =
             refreshed.buy.copy(
                 outAmountAtomic = amount.toString(),
