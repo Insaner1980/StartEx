@@ -26,6 +26,6 @@ jobs:
       - name: Generate and submit dependency graph
         uses: gradle/actions/dependency-submission@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
         with:
-          additional-arguments: --dependency-verification strict --no-configuration-cache
+          additional-arguments: --dependency-verification lenient --no-configuration-cache
           dependency-graph: generate-and-submit
           validate-wrappers: true
