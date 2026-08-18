@@ -48,7 +48,7 @@ jobs:
           build-mode: manual
 
       - name: Build Android sources for CodeQL
-        run: ./gradlew clean :app:assembleDebug -Pkotlin.compiler.execution.strategy=in-process --dependency-verification strict --no-daemon --console=plain --no-build-cache
+        run: ./gradlew clean :app:assembleDebug -Pkotlin.compiler.execution.strategy=out-of-process --dependency-verification strict --no-daemon --console=plain --no-build-cache
 
       - name: Analyze
         uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
