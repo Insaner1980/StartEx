@@ -22,6 +22,7 @@ class MonitoringSessionPolicyTest {
                 persistedSessionMode = null,
                 providersConfigured = true,
                 riskLimitsValid = true,
+                freshStartPrerequisitesReady = true,
             )
 
         assertEquals(SessionStartAction.START_MONITORING, action)
@@ -35,6 +36,7 @@ class MonitoringSessionPolicyTest {
                 persistedSessionMode = null,
                 providersConfigured = true,
                 riskLimitsValid = true,
+                freshStartPrerequisitesReady = true,
             )
 
         assertEquals(SessionStartAction.LIVE_EXECUTION_LOCKED, action)
@@ -49,6 +51,7 @@ class MonitoringSessionPolicyTest {
                     persistedSessionMode = persistedMode,
                     providersConfigured = true,
                     riskLimitsValid = true,
+                    freshStartPrerequisitesReady = true,
                 )
 
             assertEquals(SessionStartAction.LIVE_EXECUTION_LOCKED, action)
@@ -71,6 +74,21 @@ class MonitoringSessionPolicyTest {
                 persistedSessionMode = null,
                 providersConfigured = false,
                 riskLimitsValid = true,
+                freshStartPrerequisitesReady = true,
+            )
+
+        assertEquals(SessionStartAction.NOTIFY_AND_STOP, action)
+    }
+
+    @Test
+    fun `fresh paper monitoring stops when an authoritative preflight fact is missing`() {
+        val action =
+            MonitoringSessionPolicy.startAction(
+                operatingMode = OperatingMode.PAPER,
+                persistedSessionMode = null,
+                providersConfigured = true,
+                riskLimitsValid = true,
+                freshStartPrerequisitesReady = false,
             )
 
         assertEquals(SessionStartAction.NOTIFY_AND_STOP, action)

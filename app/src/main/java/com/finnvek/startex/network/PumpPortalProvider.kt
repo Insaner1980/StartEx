@@ -49,7 +49,7 @@ fun interface PumpPortalConnection {
     fun close()
 }
 
-interface PumpPortalDiscoveryProvider {
+fun interface PumpPortalDiscoveryProvider {
     suspend fun connect(listener: PumpPortalEventListener): ProviderResult<PumpPortalConnection>
 }
 
@@ -90,29 +90,14 @@ class OkHttpPumpPortalDiscoveryProvider(
                 webSocket: WebSocket,
                 response: Response,
             ) {
-                val allSent = PumpPortalProtocol.discoverySubscriptions.all(webSocket::send)
-                if (!allSent) {
-                    listener.onError(ProviderError.NetworkUnavailable(ProviderId.PUMP_PORTAL))
-                    markExpectedClosure(webSocket)
-                    if (!webSocket.close(NORMAL_CLOSE, "")) releaseSocket(webSocket)
-                }
+                sendDiscoverySubscriptions(webSocket, listener)
             }
 
             override fun onMessage(
                 webSocket: WebSocket,
                 text: String,
             ) {
-                if (text.length > MAXIMUM_EVENT_CHARACTERS) {
-                    listener.onError(ProviderError.InvalidResponse(ProviderId.PUMP_PORTAL, "bodySize"))
-                    markExpectedClosure(webSocket)
-                    if (!webSocket.close(POLICY_VIOLATION_CLOSE, "")) releaseSocket(webSocket)
-                    return
-                }
-                if (PumpPortalJson.isSubscriptionAcknowledgement(text)) return
-                when (val parsed = PumpPortalJson.parseEvent(text)) {
-                    is ProviderResult.Success -> listener.onEvent(parsed.value)
-                    is ProviderResult.Failure -> listener.onError(parsed.error)
-                }
+                handleDiscoveryMessage(webSocket, text, listener)
             }
 
             override fun onClosed(
@@ -133,6 +118,40 @@ class OkHttpPumpPortalDiscoveryProvider(
                 }
             }
         }
+
+    private fun sendDiscoverySubscriptions(
+        webSocket: WebSocket,
+        listener: PumpPortalEventListener,
+    ) {
+        if (PumpPortalProtocol.discoverySubscriptions.all(webSocket::send)) return
+        listener.onError(ProviderError.NetworkUnavailable(ProviderId.PUMP_PORTAL))
+        closeSocket(webSocket, NORMAL_CLOSE)
+    }
+
+    private fun handleDiscoveryMessage(
+        webSocket: WebSocket,
+        text: String,
+        listener: PumpPortalEventListener,
+    ) {
+        if (text.length > MAXIMUM_EVENT_CHARACTERS) {
+            listener.onError(ProviderError.InvalidResponse(ProviderId.PUMP_PORTAL, "bodySize"))
+            closeSocket(webSocket, POLICY_VIOLATION_CLOSE)
+            return
+        }
+        if (PumpPortalJson.isSubscriptionAcknowledgement(text)) return
+        when (val parsed = PumpPortalJson.parseEvent(text)) {
+            is ProviderResult.Success -> listener.onEvent(parsed.value)
+            is ProviderResult.Failure -> listener.onError(parsed.error)
+        }
+    }
+
+    private fun closeSocket(
+        webSocket: WebSocket,
+        closeCode: Int,
+    ) {
+        markExpectedClosure(webSocket)
+        if (!webSocket.close(closeCode, "")) releaseSocket(webSocket)
+    }
 
     // CPD-OFF
     private fun markExpectedClosure(webSocket: WebSocket) =

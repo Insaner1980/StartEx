@@ -8,6 +8,42 @@ plugins {
     alias(libs.plugins.detekt) apply false
     alias(libs.plugins.owasp.dependency.check) apply false
     alias(libs.plugins.stability.analyzer) apply false
+    alias(libs.plugins.sonarqube)
+}
+
+val sonarProjectProperties =
+    java.util.Properties().apply {
+        val propertiesFile = rootProject.file("sonar-project.properties")
+        if (propertiesFile.isFile) {
+            propertiesFile.inputStream().use(::load)
+        }
+    }
+
+sonar {
+    properties {
+        sonarProjectProperties.forEach { key, value ->
+            property(key.toString(), value.toString())
+        }
+    }
+}
+
+project(":app") {
+    sonar {
+        properties {
+            property(
+                "sonar.coverage.jacoco.xmlReportPaths",
+                layout.buildDirectory
+                    .file("reports/coverage/test/debug/report.xml")
+                    .get()
+                    .asFile
+                    .absolutePath,
+            )
+        }
+    }
+}
+
+tasks.named("sonar") {
+    dependsOn(":app:assembleDebug", ":app:createDebugUnitTestCoverageReport")
 }
 
 fun org.gradle.api.artifacts.DependencyResolveDetails.enforceSecureTransitiveVersion() {

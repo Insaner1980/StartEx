@@ -151,6 +151,22 @@ interface BotSessionDao {
         lastHeartbeatAtMillis: Long,
     ): Int
 
+    @Query(
+        """
+        UPDATE bot_sessions
+        SET status = 'PROTECTING',
+            stoppedAtMillis = NULL,
+            stopReason = 'STOP_AFTER_CLOSE_REQUESTED',
+            lastHeartbeatAtMillis = :nowMillis
+        WHERE id = :id
+          AND status = 'RUNNING'
+        """,
+    )
+    suspend fun requestStopAfterClose(
+        id: String,
+        nowMillis: Long,
+    ): Int
+
     @Query("UPDATE bot_sessions SET lastHeartbeatAtMillis = :heartbeatAtMillis WHERE id = :id")
     suspend fun touchHeartbeat(
         id: String,
@@ -382,6 +398,7 @@ interface LedgerDao {
             p.exitReason AS exitReason,
             p.openedAtMillis AS openedAtMillis,
             p.closedAtMillis AS closedAtMillis,
+            p.grossInputLamports AS grossInputLamports,
             p.highestExecutableSellLamports AS highestExecutableSellLamports,
             p.lowestExecutableSellLamports AS lowestExecutableSellLamports,
             d.strategyVersion AS strategyVersion,
@@ -424,6 +441,7 @@ interface LedgerDao {
             p.exitReason AS exitReason,
             p.openedAtMillis AS openedAtMillis,
             p.closedAtMillis AS closedAtMillis,
+            p.grossInputLamports AS grossInputLamports,
             p.highestExecutableSellLamports AS highestExecutableSellLamports,
             p.lowestExecutableSellLamports AS lowestExecutableSellLamports,
             d.strategyVersion AS strategyVersion,
@@ -469,6 +487,7 @@ data class TradeExportRow(
     val exitReason: String?,
     val openedAtMillis: Long?,
     val closedAtMillis: Long?,
+    val grossInputLamports: Long? = null,
     val highestExecutableSellLamports: Long?,
     val lowestExecutableSellLamports: Long?,
     val strategyVersion: Int?,
@@ -521,6 +540,9 @@ interface ProviderHealthDao {
 
     @Query("SELECT * FROM provider_health WHERE provider = :provider")
     suspend fun byProvider(provider: String): ProviderHealthEntity?
+
+    @Query("DELETE FROM provider_health WHERE provider = :provider")
+    suspend fun delete(provider: String): Int
 }
 
 @Dao

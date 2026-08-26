@@ -37,6 +37,60 @@ class PaperCandidateCoordinatorTest {
     }
 
     @Test
+    fun `invalid monitoring configuration is rejected before observation`() =
+        runTest {
+            val valid = request()
+            val invalidRequests =
+                listOf(
+                    "CONFIGURATION_INVALID" to valid.copy(sessionId = ""),
+                    "CONFIGURATION_INVALID" to valid.copy(candidate = valid.candidate.copy(mint = "")),
+                    "OBSERVATION_COUNT_INVALID" to
+                        valid.copy(strategy = valid.strategy.copy(requiredSnapshotCount = 1)),
+                    "OBSERVATION_COUNT_INVALID" to
+                        valid.copy(strategy = valid.strategy.copy(requiredSnapshotCount = 21)),
+                    "OBSERVATION_INTERVAL_INVALID" to
+                        valid.copy(strategy = valid.strategy.copy(minimumObservationMillis = 0)),
+                    "OBSERVATION_INTERVAL_INVALID" to
+                        valid.copy(strategy = valid.strategy.copy(minimumObservationMillis = 60_001)),
+                    "OPEN_POSITION_LIMIT_INVALID" to
+                        valid.copy(risk = valid.risk.copy(maximumOpenPositions = 0)),
+                    "OPEN_POSITION_LIMIT_INVALID" to
+                        valid.copy(risk = valid.risk.copy(maximumOpenPositions = 3)),
+                    "TRADE_AMOUNT_INVALID" to valid.copy(risk = valid.risk.copy(maximumTradeLamports = 0)),
+                    "SLIPPAGE_CAP_INVALID" to valid.copy(risk = valid.risk.copy(maximumSlippageBps = -1)),
+                    "SLIPPAGE_CAP_INVALID" to valid.copy(risk = valid.risk.copy(maximumSlippageBps = 10_001)),
+                    "PRIORITY_FEE_CAP_INVALID" to
+                        valid.copy(risk = valid.risk.copy(maximumPriorityFeeLamports = -1)),
+                    "TRANSACTION_COST_CAP_INVALID" to
+                        valid.copy(risk = valid.risk.copy(maximumTransactionCostLamports = -1)),
+                    "FEE_CAP_INVALID" to valid.copy(risk = valid.risk.copy(maximumFeePercentBps = -1)),
+                    "FEE_CAP_INVALID" to valid.copy(risk = valid.risk.copy(maximumFeePercentBps = 10_001)),
+                    "SCORE_CONFIGURATION_INVALID" to
+                        valid.copy(strategy = valid.strategy.copy(minimumEntryScore = -1)),
+                    "SCORE_CONFIGURATION_INVALID" to
+                        valid.copy(strategy = valid.strategy.copy(minimumEntryScore = 101)),
+                    "EXIT_RULES_INVALID" to valid.copy(strategy = valid.strategy.copy(hardStopLossBps = -1)),
+                )
+
+            invalidRequests.forEachIndexed { index, (expectedReason, invalidRequest) ->
+                val clock = AdvancingClock(100_000L + index)
+                val persistence = RecordingPersistence()
+                val result =
+                    coordinator(
+                        clock = clock,
+                        tokens = SequenceTokens(clock),
+                        quotes = RecordingQuoteSource(),
+                        proofs = PaperCandidateSafetyProofSource { _, _ -> completeProof() },
+                        persistence = persistence,
+                    ).process(invalidRequest)
+
+                require(result is PaperCandidateResult.Rejected)
+                assertTrue("$expectedReason missing from ${result.reasons}", expectedReason in result.reasons)
+                assertTrue(persistence.snapshots.isEmpty())
+            }
+        }
+
+    @Test
     fun `missing independent safety proof rejects after persisting the configured real observations`() =
         runTest {
             val clock = AdvancingClock(100_000)

@@ -10,6 +10,7 @@ import com.finnvek.startex.network.JupiterTokenAudit
 import com.finnvek.startex.network.JupiterTokenSnapshot
 import com.finnvek.startex.network.JupiterTokenStats
 import com.finnvek.startex.network.ProviderId
+import com.finnvek.startex.network.RpcAccountInfo
 import kotlinx.coroutines.test.runTest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -126,6 +127,70 @@ class PaperRuntimeSourcesTest {
         )
         assertNull(liquidityLamports(BigDecimal.ONE, BigDecimal.ZERO))
         assertNull(liquidityLamports(BigDecimal("0.000000001"), BigDecimal("2")))
+    }
+
+    @Test
+    fun `exit safety facts reject stale future executable and mismatched token accounts`() {
+        val account = tokenAccount()
+        val nowMillis = NOW.toEpochMilli()
+
+        assertNull(
+            paperExitSafetyFacts(
+                token().copy(updatedAtMillis = NOW.minusSeconds(16).toEpochMilli()),
+                account,
+                nowMillis,
+                15_000,
+            ),
+        )
+        assertNull(
+            paperExitSafetyFacts(
+                token().copy(updatedAtMillis = NOW.plusMillis(1).toEpochMilli()),
+                account,
+                nowMillis,
+                15_000,
+            ),
+        )
+        assertNull(paperExitSafetyFacts(token(), account.copy(executable = true), nowMillis, 15_000))
+        assertNull(paperExitSafetyFacts(token(), account.copy(owner = SYSTEM_PROGRAM), nowMillis, 15_000))
+        assertNull(
+            paperExitSafetyFacts(
+                token(program = TOKEN_2022_PROGRAM_ID),
+                account.copy(owner = TOKEN_2022_PROGRAM_ID),
+                nowMillis,
+                15_000,
+            ),
+        )
+    }
+
+    @Test
+    fun `exit safety facts deterministically map audit penalties and unsafe state`() {
+        val riskyToken =
+            token().copy(
+                audit =
+                    token().audit.copy(
+                        topHoldersPercentage = BigDecimal("30.1"),
+                        developerBalancePercentage = BigDecimal("10.1"),
+                    ),
+                stats5m = token().stats5m.copy(buyCount = 20, sellCount = 21),
+            )
+
+        val facts = paperExitSafetyFacts(riskyToken, tokenAccount(), NOW.toEpochMilli(), 15_000)
+        val unsafe =
+            paperExitSafetyFacts(
+                riskyToken.copy(audit = riskyToken.audit.copy(isSuspicious = true)),
+                tokenAccount(),
+                NOW.toEpochMilli(),
+                15_000,
+            )
+
+        requireNotNull(facts)
+        assertEquals(38, facts.score)
+        assertTrue(facts.momentumCollapsed)
+        assertTrue(facts.suspiciousCreatorActivity)
+        assertTrue(facts.largeHolderSell)
+        requireNotNull(unsafe)
+        assertEquals(0, unsafe.score)
+        assertTrue(unsafe.tokenUnsafe)
     }
 
     @Test
@@ -290,6 +355,14 @@ class PaperRuntimeSourcesTest {
             ),
         updatedAtMillis = NOW.minusSeconds(1).toEpochMilli(),
     )
+
+    private fun tokenAccount() =
+        RpcAccountInfo(
+            owner = LEGACY_TOKEN_PROGRAM_ID,
+            executable = false,
+            lamports = 1,
+            slot = 1,
+        )
 
     // CPD-ON
     private fun riskSource(

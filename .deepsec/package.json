@@ -4,7 +4,7 @@
   "scripts": {
     "deepsec:scan": "deepsec scan --project-id startex",
     "deepsec:process": "deepsec process --project-id startex --agent codex --model gpt-5.6-luna",
-    "deepsec:revalidate": "deepsec revalidate --project-id startex --agent codex --model gpt-5.6-luna --min-severity HIGH",
+    "deepsec:revalidate": "deepsec revalidate --project-id startex --agent codex --model gpt-5.6-luna --min-severity MEDIUM",
     "deepsec:export": "deepsec export --project-id startex --format md-dir --out ./findings",
     "deepsec:report": "pnpm run deepsec:scan && pnpm run deepsec:process && pnpm run deepsec:export",
     "deepsec:report:custom": "pnpm run deepsec:report"

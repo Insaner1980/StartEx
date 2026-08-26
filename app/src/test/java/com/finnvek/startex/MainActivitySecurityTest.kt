@@ -6,6 +6,7 @@ import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
 import android.view.WindowManager
+import androidx.core.view.WindowCompat
 import androidx.lifecycle.ViewModelProvider
 import com.finnvek.startex.service.TradingMonitorService
 import com.finnvek.startex.ui.AuthenticationPurpose
@@ -44,6 +45,18 @@ class MainActivitySecurityTest {
     }
 
     @Test
+    fun debugComposeTestHostActivityIsNotExported() {
+        val context = RuntimeEnvironment.getApplication()
+        val activity =
+            context.packageManager.getActivityInfo(
+                ComponentName(context, "androidx.activity.ComponentActivity"),
+                0,
+            )
+
+        assertFalse(activity.exported)
+    }
+
+    @Test
     fun secureFlagIsSetBeforeTheActivityIsShown() {
         val activity = Robolectric.buildActivity(MainActivity::class.java).create().get()
 
@@ -52,6 +65,32 @@ class MainActivitySecurityTest {
             activity.window.attributes.flags and WindowManager.LayoutParams.FLAG_SECURE,
         )
         assertTrue(activity.window.decorView.filterTouchesWhenObscured)
+    }
+
+    @Test
+    fun systemBarIconsStayLightForTheAlwaysDarkTheme() {
+        val activity = Robolectric.buildActivity(MainActivity::class.java).create().get()
+        val controller = WindowCompat.getInsetsController(activity.window, activity.window.decorView)
+
+        assertFalse(controller.isAppearanceLightStatusBars)
+        assertFalse(controller.isAppearanceLightNavigationBars)
+    }
+
+    @Suppress("DEPRECATION")
+    @Test
+    @Config(sdk = [29, 30, 31, 32, 33, 34, 35])
+    fun mainActivityResizesForTheSoftwareKeyboardAcrossSupportedApis() {
+        val context = RuntimeEnvironment.getApplication()
+        val activity =
+            context.packageManager.getActivityInfo(
+                ComponentName(context, MainActivity::class.java),
+                0,
+            )
+
+        assertEquals(
+            WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE,
+            activity.softInputMode and WindowManager.LayoutParams.SOFT_INPUT_MASK_ADJUST,
+        )
     }
 
     @Test

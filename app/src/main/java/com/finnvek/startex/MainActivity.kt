@@ -1,8 +1,14 @@
 package com.finnvek.startex
 
+import android.app.Activity
+import android.app.KeyguardManager
+import android.content.Intent
+import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.WindowManager
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -26,7 +32,10 @@ class MainActivity : FragmentActivity() {
         biometricPrompt = createBiometricPrompt()
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         window.decorView.setFilterTouchesWhenObscured(true)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         setContent {
             StartExTheme {
                 StartExApp(
@@ -39,6 +48,7 @@ class MainActivity : FragmentActivity() {
 
     override fun onStop() {
         super.onStop()
+        viewModel.onActivityStopped()
         if (viewModel.state.value.secureSession && !authenticationInProgress) {
             viewModel.lockWallet()
         }
@@ -49,12 +59,40 @@ class MainActivity : FragmentActivity() {
         return super.dispatchTouchEvent(event)
     }
 
+    @Suppress("DEPRECATION")
+    override fun onActivityResult(
+        requestCode: Int,
+        resultCode: Int,
+        data: Intent?,
+    ) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != REQUEST_DEVICE_CREDENTIAL) return
+        val request = viewModel.takePendingAuthenticationRequest() ?: return
+        if (resultCode == Activity.RESULT_OK) {
+            viewModel.onAuthenticationSucceeded(request)
+        } else {
+            viewModel.onAuthenticationFailed(request)
+        }
+        finishAuthentication()
+    }
+
     private fun authenticate(
         request: StartExUiEvent.Authenticate,
         promptInfo: BiometricPrompt.PromptInfo,
     ) {
+        if (!viewModel.onAuthenticationPromptStarted(request)) return
         authenticationInProgress = true
-        viewModel.onAuthenticationPromptStarted(request)
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && request.operation == null) {
+            @Suppress("DEPRECATION")
+            val credentialIntent =
+                getSystemService(KeyguardManager::class.java)
+                    ?.createConfirmDeviceCredentialIntent(promptInfo.title, promptInfo.subtitle)
+            if (credentialIntent != null) {
+                @Suppress("DEPRECATION")
+                startActivityForResult(credentialIntent, REQUEST_DEVICE_CREDENTIAL)
+                return
+            }
+        }
         if (request.operation == null) {
             biometricPrompt.authenticate(promptInfo)
         } else {
@@ -76,7 +114,7 @@ class MainActivity : FragmentActivity() {
                             }
                         } ?: if (request.operation == null) request else null
                     if (authenticatedRequest == null) {
-                        viewModel.onAuthenticationFailed()
+                        viewModel.onAuthenticationFailed(request)
                     } else {
                         viewModel.onAuthenticationSucceeded(authenticatedRequest)
                     }
@@ -87,8 +125,11 @@ class MainActivity : FragmentActivity() {
                     errorCode: Int,
                     errString: CharSequence,
                 ) {
-                    if (viewModel.takePendingAuthenticationRequest() == null) return
-                    viewModel.onAuthenticationFailed()
+                    val request = viewModel.takePendingAuthenticationRequest() ?: return
+                    viewModel.onAuthenticationFailed(
+                        request,
+                        biometricAuthenticationErrorMessage(errorCode),
+                    )
                     finishAuthentication()
                 }
 
@@ -105,4 +146,22 @@ class MainActivity : FragmentActivity() {
             viewModel.lockWallet()
         }
     }
+
+    private companion object {
+        const val REQUEST_DEVICE_CREDENTIAL = 0x51A7
+    }
 }
+
+internal fun biometricAuthenticationErrorMessage(errorCode: Int): Int =
+    when (errorCode) {
+        BiometricPrompt.ERROR_LOCKOUT,
+        BiometricPrompt.ERROR_LOCKOUT_PERMANENT,
+        -> R.string.authentication_locked_out
+
+        BiometricPrompt.ERROR_CANCELED,
+        BiometricPrompt.ERROR_HW_UNAVAILABLE,
+        BiometricPrompt.ERROR_TIMEOUT,
+        -> R.string.authentication_temporarily_unavailable
+
+        else -> R.string.authentication_failed
+    }

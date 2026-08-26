@@ -10,6 +10,17 @@ import com.finnvek.startex.data.local.TokenSnapshotEntity
 import com.finnvek.startex.data.local.TradeIntentEntity
 import kotlinx.serialization.Serializable
 
+data class AnalysisExportEntities(
+    val sessions: List<BotSessionEntity>,
+    val candidates: List<TokenCandidateEntity>,
+    val snapshots: List<TokenSnapshotEntity>,
+    val decisions: List<DecisionEntity>,
+    val positions: List<PositionEntity>,
+    val tradeIntents: List<TradeIntentEntity>,
+    val transactions: List<BlockchainTransactionEntity>,
+    val fees: List<FeeRecordEntity>,
+)
+
 @Serializable
 data class AnalysisExport(
     val candidates: List<AnalysisCandidateRecord>,
@@ -21,16 +32,15 @@ data class AnalysisExport(
     val fees: List<AnalysisFeeRecord>,
 ) {
     companion object {
-        fun fromEntities(
-            sessions: List<BotSessionEntity>,
-            candidates: List<TokenCandidateEntity>,
-            snapshots: List<TokenSnapshotEntity>,
-            decisions: List<DecisionEntity>,
-            positions: List<PositionEntity>,
-            tradeIntents: List<TradeIntentEntity>,
-            transactions: List<BlockchainTransactionEntity>,
-            fees: List<FeeRecordEntity>,
-        ): AnalysisExport {
+        fun fromEntities(entities: AnalysisExportEntities): AnalysisExport {
+            val sessions = entities.sessions
+            val candidates = entities.candidates
+            val snapshots = entities.snapshots
+            val decisions = entities.decisions
+            val positions = entities.positions
+            val tradeIntents = entities.tradeIntents
+            val transactions = entities.transactions
+            val fees = entities.fees
             val sessionsById = sessions.associateBy(BotSessionEntity::id)
             val decisionsById = decisions.associateBy(DecisionEntity::id)
             val positionsById = positions.associateBy(PositionEntity::id)

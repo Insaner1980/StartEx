@@ -36,6 +36,8 @@ class SecretEnvelopeCipherTest {
         secret.clearSecret()
     }
 
+    // Authentication-failure cases intentionally construct their own independent cipher envelope.
+    // CPD-OFF
     @Test(expected = AEADBadTagException::class)
     fun `public address metadata is authenticated`() {
         val encryptionCipher =
@@ -63,7 +65,35 @@ class SecretEnvelopeCipherTest {
         SecretEnvelopeCipher.decrypt(decryptionCipher, tampered)
     }
 
-    @Test(expected = IllegalArgumentException::class)
+    // CPD-ON
+    @Test(expected = AEADBadTagException::class)
+    fun `truncated ciphertext fails authentication without plaintext`() {
+        val encryptionCipher =
+            Cipher.getInstance("AES/GCM/NoPadding").apply {
+                init(Cipher.ENCRYPT_MODE, key)
+            }
+        val envelope =
+            SecretEnvelopeCipher.encrypt(
+                cipher = encryptionCipher,
+                secret = ByteArray(32) { 7 },
+                publicAddress = "11111111111111111111111111111111",
+            )
+        val truncated =
+            SecretEnvelope(
+                version = envelope.version,
+                publicAddress = envelope.publicAddress,
+                iv = envelope.iv,
+                ciphertext = envelope.ciphertext.copyOf(47),
+            )
+        val decryptionCipher =
+            Cipher.getInstance("AES/GCM/NoPadding").apply {
+                init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, envelope.iv))
+            }
+
+        SecretEnvelopeCipher.decrypt(decryptionCipher, truncated)
+    }
+
+    @Test(expected = UnsupportedSecretEnvelopeVersionException::class)
     fun `unsupported envelope version fails closed`() {
         val envelope =
             SecretEnvelope(

@@ -53,7 +53,7 @@ fun interface HeliusRealtimeConnection {
     fun close()
 }
 
-interface HeliusWebSocketProvider {
+fun interface HeliusWebSocketProvider {
     suspend fun connect(
         subscriptions: Set<HeliusSubscription>,
         listener: HeliusRealtimeListener,
@@ -110,64 +110,14 @@ class OkHttpHeliusWebSocketProvider(
             webSocket: WebSocket,
             response: Response,
         ) {
-            for (subscription in subscriptions) {
-                val requestId = requestIds.incrementAndGet()
-                synchronized(lock) { pending[requestId] = subscription }
-                if (!webSocket.send(HeliusWebSocketJson.subscriptionRequest(requestId, subscription))) {
-                    listener.onError(ProviderError.NetworkUnavailable(ProviderId.HELIUS))
-                    closeForFailure(webSocket)
-                    return
-                }
-            }
+            sendSubscriptions(webSocket, subscriptions, pending, listener)
         }
 
         override fun onMessage(
             webSocket: WebSocket,
             text: String,
         ) {
-            val message = HeliusWebSocketJson.parse(text)
-            if (message is ProviderResult.Failure) {
-                listener.onError(message.error)
-                closeForFailure(webSocket)
-                return
-            }
-            when (val value = (message as ProviderResult.Success).value) {
-                is HeliusWireMessage.Acknowledgement -> {
-                    synchronized(lock) {
-                        val subscription = pending.remove(value.requestId)
-                        if (subscription == null) {
-                            listener.onError(ProviderError.InvalidResponse(ProviderId.HELIUS, "id"))
-                            closeForFailure(webSocket)
-                        } else {
-                            active[value.subscriptionId] = subscription
-                        }
-                    }
-                }
-
-                is HeliusWireMessage.AccountNotification -> {
-                    val subscription = synchronized(lock) { active[value.subscriptionId] }
-                    if (subscription !is HeliusSubscription.Account) {
-                        listener.onError(ProviderError.InvalidResponse(ProviderId.HELIUS, "subscription"))
-                        closeForFailure(webSocket)
-                        return
-                    }
-                    listener.onEvent(
-                        HeliusRealtimeEvent.AccountChanged(subscription.address, value.lamports, value.slot),
-                    )
-                }
-
-                is HeliusWireMessage.SignatureNotification -> {
-                    val subscription = synchronized(lock) { active[value.subscriptionId] }
-                    if (subscription !is HeliusSubscription.Signature) {
-                        listener.onError(ProviderError.InvalidResponse(ProviderId.HELIUS, "subscription"))
-                        closeForFailure(webSocket)
-                        return
-                    }
-                    listener.onEvent(
-                        HeliusRealtimeEvent.SignatureChanged(subscription.signature, value.slot, value.failed),
-                    )
-                }
-            }
+            handleMessage(webSocket, text, listener, pending, active)
         }
 
         override fun onClosed(
@@ -189,11 +139,111 @@ class OkHttpHeliusWebSocketProvider(
                 listener.onError(ProviderError.NetworkUnavailable(ProviderId.HELIUS))
             }
         }
+    }
 
-        private fun closeForFailure(webSocket: WebSocket) {
-            markExpectedClosure(webSocket)
-            if (!webSocket.close(POLICY_VIOLATION_CLOSE, "")) releaseSocket(webSocket)
+    private fun sendSubscriptions(
+        webSocket: WebSocket,
+        subscriptions: Set<HeliusSubscription>,
+        pending: MutableMap<Long, HeliusSubscription>,
+        listener: HeliusRealtimeListener,
+    ) {
+        for (subscription in subscriptions) {
+            val requestId = requestIds.incrementAndGet()
+            synchronized(lock) { pending[requestId] = subscription }
+            if (!webSocket.send(HeliusWebSocketJson.subscriptionRequest(requestId, subscription))) {
+                listener.onError(ProviderError.NetworkUnavailable(ProviderId.HELIUS))
+                closeForFailure(webSocket)
+                return
+            }
         }
+    }
+
+    private fun handleMessage(
+        webSocket: WebSocket,
+        text: String,
+        listener: HeliusRealtimeListener,
+        pending: MutableMap<Long, HeliusSubscription>,
+        active: MutableMap<Long, HeliusSubscription>,
+    ) {
+        when (val message = HeliusWebSocketJson.parse(text)) {
+            is ProviderResult.Failure -> {
+                listener.onError(message.error)
+                closeForFailure(webSocket)
+            }
+
+            is ProviderResult.Success -> {
+                when (val value = message.value) {
+                    is HeliusWireMessage.Acknowledgement -> {
+                        handleAcknowledgement(webSocket, value, listener, pending, active)
+                    }
+
+                    is HeliusWireMessage.AccountNotification -> {
+                        handleAccountNotification(webSocket, value, listener, active)
+                    }
+
+                    is HeliusWireMessage.SignatureNotification -> {
+                        handleSignatureNotification(webSocket, value, listener, active)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun handleAcknowledgement(
+        webSocket: WebSocket,
+        message: HeliusWireMessage.Acknowledgement,
+        listener: HeliusRealtimeListener,
+        pending: MutableMap<Long, HeliusSubscription>,
+        active: MutableMap<Long, HeliusSubscription>,
+    ) {
+        synchronized(lock) {
+            val subscription = pending.remove(message.requestId)
+            if (subscription == null) {
+                listener.onError(ProviderError.InvalidResponse(ProviderId.HELIUS, "id"))
+                closeForFailure(webSocket)
+            } else {
+                active[message.subscriptionId] = subscription
+            }
+        }
+    }
+
+    private fun handleAccountNotification(
+        webSocket: WebSocket,
+        message: HeliusWireMessage.AccountNotification,
+        listener: HeliusRealtimeListener,
+        active: Map<Long, HeliusSubscription>,
+    ) {
+        val subscription = synchronized(lock) { active[message.subscriptionId] }
+        if (subscription !is HeliusSubscription.Account) {
+            listener.onError(ProviderError.InvalidResponse(ProviderId.HELIUS, "subscription"))
+            closeForFailure(webSocket)
+            return
+        }
+        listener.onEvent(
+            HeliusRealtimeEvent.AccountChanged(subscription.address, message.lamports, message.slot),
+        )
+    }
+
+    private fun handleSignatureNotification(
+        webSocket: WebSocket,
+        message: HeliusWireMessage.SignatureNotification,
+        listener: HeliusRealtimeListener,
+        active: Map<Long, HeliusSubscription>,
+    ) {
+        val subscription = synchronized(lock) { active[message.subscriptionId] }
+        if (subscription !is HeliusSubscription.Signature) {
+            listener.onError(ProviderError.InvalidResponse(ProviderId.HELIUS, "subscription"))
+            closeForFailure(webSocket)
+            return
+        }
+        listener.onEvent(
+            HeliusRealtimeEvent.SignatureChanged(subscription.signature, message.slot, message.failed),
+        )
+    }
+
+    private fun closeForFailure(webSocket: WebSocket) {
+        markExpectedClosure(webSocket)
+        if (!webSocket.close(POLICY_VIOLATION_CLOSE, "")) releaseSocket(webSocket)
     }
 
     private fun markExpectedClosure(webSocket: WebSocket) =

@@ -1,9 +1,34 @@
 package com.finnvek.startex.ui
 
+import com.finnvek.startex.R
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class StartExTopLevelRouteTest {
+    @Test
+    fun lockedStopConfirmationDoesNotExposeTheOpenPositionCount() {
+        assertNull(stopConfirmationOpenPositionCount(TopLevelRoute.SecureSessionLock, 2))
+        assertEquals(2, stopConfirmationOpenPositionCount(TopLevelRoute.Main, 2))
+    }
+
+    @Test
+    fun startupErrorWinsOverLoadingAndEveryOtherRoute() {
+        assertEquals(
+            TopLevelRoute.LoadError,
+            topLevelRoute(
+                state =
+                    lockedState().copy(
+                        loaded = false,
+                    ),
+                walletSetup = WalletSetupState.RestoreInput(),
+                walletOverlay = WalletOverlay.Receive,
+                panel = FullScreenPanel.Providers,
+                startupError = R.string.session_state_load_failed,
+            ),
+        )
+    }
+
     @Test
     fun loadingWinsOverEveryOtherRoute() {
         assertEquals(

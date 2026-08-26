@@ -58,6 +58,7 @@ class AndroidKeystoreSecretCipher private constructor(
     }
 
     fun prepareDecryption(envelope: SecretEnvelope): PreparedCipherOperation {
+        SecretEnvelopeCipher.requireSupportedVersion(envelope)
         val cipher =
             Cipher.getInstance(AES_GCM_NO_PADDING).apply {
                 init(
@@ -93,7 +94,7 @@ class AndroidKeystoreSecretCipher private constructor(
 
     private fun getExistingKey(): SecretKey =
         loadKeyStore().getKey(keyAlias, null) as? SecretKey
-            ?: error("Wallet wrapping key is unavailable")
+            ?: throw MissingSecretEnvelopeKeyException()
 
     private fun generateKey(): SecretKey {
         val builder =

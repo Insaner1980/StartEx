@@ -1,26 +1,36 @@
 package com.finnvek.startex.wallet
 
 import cash.z.ecc.android.bip39.Mnemonics.MnemonicCode
-import cash.z.ecc.android.bip39.Mnemonics.WordCount
 import com.finnvek.startex.security.clearSecret
 import org.sol4k.Keypair
 import java.io.Closeable
+import java.security.SecureRandom
+
+internal const val MAX_MNEMONIC_INPUT_CHAR_COUNT = 256
 
 class LocalWalletFactory internal constructor(
     private val privateKeyDeriver: SolanaPrivateKeyDeriver = WalletCoreSolanaPrivateKeyDeriver,
+    private val secureRandom: SecureRandom = SecureRandom(),
 ) {
     fun create(): NewLocalWallet {
-        MnemonicCode(WordCount.COUNT_24).use { mnemonic ->
-            val phrase = mnemonic.chars.copyOf()
-            return try {
-                NewLocalWallet(phrase, deriveWallet(mnemonic))
-            } finally {
-                phrase.fill('0')
+        val entropy = ByteArray(BIP39_24_WORD_ENTROPY_SIZE)
+        return try {
+            secureRandom.nextBytes(entropy)
+            MnemonicCode(entropy).use { mnemonic ->
+                val phrase = mnemonic.chars.copyOf()
+                try {
+                    NewLocalWallet(phrase, deriveWallet(mnemonic))
+                } finally {
+                    phrase.fill('0')
+                }
             }
+        } finally {
+            entropy.clearSecret()
         }
     }
 
     fun restore(phrase: CharArray): LocalWallet {
+        require(phrase.size <= MAX_MNEMONIC_INPUT_CHAR_COUNT) { "Recovery phrase is too long" }
         val phraseCopy = phrase.copyOf()
         return try {
             MnemonicCode(phraseCopy).use { mnemonic ->
@@ -44,6 +54,10 @@ class LocalWalletFactory internal constructor(
         } finally {
             entropy.clearSecret()
         }
+    }
+
+    private companion object {
+        const val BIP39_24_WORD_ENTROPY_SIZE = 32
     }
 }
 

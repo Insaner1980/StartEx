@@ -3,8 +3,10 @@ package com.finnvek.startex.service
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -25,7 +27,9 @@ import com.finnvek.startex.data.local.StrategyConfigEntity
 import com.finnvek.startex.data.local.TokenCandidateEntity
 import com.finnvek.startex.data.local.TokenSnapshotEntity
 import com.finnvek.startex.data.local.TradeIntentEntity
+import com.finnvek.startex.data.settings.AppSettings
 import com.finnvek.startex.device.DeviceHealthEntryPolicy
+import com.finnvek.startex.formatUserNumber
 import com.finnvek.startex.network.HeliusRealtimeEvent
 import com.finnvek.startex.network.HeliusRealtimeListener
 import com.finnvek.startex.network.HeliusSubscription
@@ -54,7 +58,6 @@ import com.finnvek.startex.trading.PaperCandidateSafetyEvidence
 import com.finnvek.startex.trading.PaperCandidateSafetyEvidenceSource
 import com.finnvek.startex.trading.PaperCoordinatorDelay
 import com.finnvek.startex.trading.PaperEntryFacts
-import com.finnvek.startex.trading.PaperExitSafetyFacts
 import com.finnvek.startex.trading.PaperExitSafetySource
 import com.finnvek.startex.trading.PaperFillPersistenceResult
 import com.finnvek.startex.trading.PaperFinalStateGate
@@ -74,6 +77,7 @@ import com.finnvek.startex.trading.PaperSolUsdRateSource
 import com.finnvek.startex.trading.PaperSwapQuoteSource
 import com.finnvek.startex.trading.WRAPPED_SOL_MINT
 import com.finnvek.startex.trading.paperCircuitBreakerState
+import com.finnvek.startex.trading.paperExitSafetyFacts
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -147,15 +151,17 @@ class TradingMonitorService : Service() {
         flags: Int,
         startId: Int,
     ): Int {
+        val expectedSessionId = intent?.getStringExtra(EXTRA_SESSION_ID)
         when (intent?.action) {
             null -> startSession(recoveryAuthenticated = false, restartOnly = true)
             ACTION_START -> startSession(recoveryAuthenticated = false)
-            ACTION_RECOVER_AUTHENTICATED -> recoverAuthenticated()
-            ACTION_PAUSE -> requestStop(StopDirective.Paused)
-            ACTION_RESUME -> startSession(recoveryAuthenticated = false)
+            ACTION_RECOVER_AUTHENTICATED -> recoverAuthenticated(expectedSessionId)
+            ACTION_PAUSE -> handlePauseAction(intent, startId)
+            ACTION_RESUME -> handleResumeAction(intent, startId)
             ACTION_SELL_NOW -> requestPaperSell(intent.getStringExtra(EXTRA_POSITION_ID))
             ACTION_EMERGENCY_EXIT -> requestEmergencyPaperExit()
             ACTION_STOP_AFTER_CLOSE -> requestStopAfterClose()
+            ACTION_STOP_AUTHENTICATED -> requestStop(StopDirective.UserRequested, expectedSessionId)
             ACTION_STOP -> requestStop(StopDirective.UserRequested)
             else -> requestStop(StopDirective.InvalidStart)
         }
@@ -181,6 +187,7 @@ class TradingMonitorService : Service() {
     private fun startSession(
         recoveryAuthenticated: Boolean,
         restartOnly: Boolean = false,
+        expectedRecoverySessionId: String? = null,
     ) {
         if (sessionJob?.isActive == true) return
         pausedSessionId = null
@@ -189,15 +196,20 @@ class TradingMonitorService : Service() {
         updateNotification(paused = false)
         sessionJob =
             scope.launch {
-                runSession(recoveryAuthenticated, restartOnly)
+                runSession(recoveryAuthenticated, restartOnly, expectedRecoverySessionId)
             }
     }
 
-    private fun recoverAuthenticated() {
+    private fun recoverAuthenticated(expectedSessionId: String?) {
+        if (expectedSessionId.isNullOrBlank()) return
         if (sessionJob?.isActive != true) {
-            startSession(recoveryAuthenticated = true)
+            startSession(
+                recoveryAuthenticated = true,
+                expectedRecoverySessionId = expectedSessionId,
+            )
             return
         }
+        if (activeSessionSnapshot.get()?.id != expectedSessionId) return
         scope.launch {
             val now = Instant.now()
             val reset =
@@ -241,29 +253,23 @@ class TradingMonitorService : Service() {
     }
 
     private fun requestStopAfterClose() {
-        if (sessionJob?.isActive != true) {
+        val activeSession = activeSessionSnapshot.get()
+        if (sessionJob?.isActive != true || activeSession == null) {
             finishService(null)
             return
         }
-        protectingOnly.set(true)
         scope.launch {
-            val active = app.repository.observeActiveSession(RECOVERABLE_SESSION_STATES).first() ?: return@launch
             val now = System.currentTimeMillis()
-            app.repository.updateSessionStatus(
-                id = active.id,
-                status = STATUS_PROTECTING,
-                stoppedAtMillis = null,
-                stopReason = "STOP_AFTER_CLOSE_REQUESTED",
-                lastHeartbeatAtMillis = now,
-            )
+            if (!app.repository.requestStopAfterClose(activeSession.id, now)) return@launch
+            protectingOnly.set(true)
             activeSessionSnapshot.set(
-                active.copy(
+                activeSession.copy(
                     status = STATUS_PROTECTING,
                     stopReason = "STOP_AFTER_CLOSE_REQUESTED",
                     lastHeartbeatAtMillis = now,
                 ),
             )
-            recordEvent("INFO", "SESSION", "STOP_AFTER_CLOSE_REQUESTED", active.id, now)
+            recordEvent("INFO", "SESSION", "STOP_AFTER_CLOSE_REQUESTED", activeSession.id, now)
         }
     }
 
@@ -294,27 +300,89 @@ class TradingMonitorService : Service() {
         }
     }
 
-    private fun requestStop(directive: StopDirective) {
+    private fun requestStop(
+        directive: StopDirective,
+        expectedSessionId: String? = null,
+    ) {
+        if (expectedSessionId != null) {
+            requestStopForExpectedSession(directive, expectedSessionId)
+            return
+        }
         stopDirective.compareAndSet(null, directive)
         val activeJob = sessionJob
-        if (activeJob?.isActive == true) {
-            activeJob.cancel()
-        } else if (directive is StopDirective.UserRequested && pausedSessionId != null) {
-            stopPausedSession(directive)
-        } else if (directive is StopDirective.UserRequested) {
-            stopPersistedSession(directive)
+        when {
+            activeJob?.isActive == true -> activeJob.cancel()
+            directive is StopDirective.UserRequested && pausedSessionId != null -> stopPausedSession(directive)
+            directive is StopDirective.UserRequested -> stopPersistedSession(directive)
+            else -> finishService(directive.startId)
+        }
+    }
+
+    private fun requestStopForExpectedSession(
+        directive: StopDirective,
+        expectedSessionId: String,
+    ) {
+        if (expectedSessionId.isBlank()) return
+        if (sessionJob?.isActive == true) {
+            if (activeSessionSnapshot.get()?.id == expectedSessionId) requestStop(directive)
+            return
+        }
+        if (pausedSessionId != null) {
+            if (pausedSessionId == expectedSessionId) requestStop(directive)
+            return
+        }
+        if (directive is StopDirective.UserRequested) {
+            stopPersistedSession(directive, expectedSessionId)
+        }
+    }
+
+    private fun handlePauseAction(
+        intent: Intent,
+        startId: Int,
+    ) {
+        if (
+            acceptsNotificationAction(
+                intent = intent,
+                currentSessionId = activeSessionSnapshot.get()?.id,
+                expectedState = sessionJob?.isActive == true,
+            )
+        ) {
+            requestStop(StopDirective.Paused)
         } else {
-            finishService(directive.startId)
+            if (sessionJob?.isActive != true && pausedSessionId == null) finishService(startId)
+        }
+    }
+
+    private fun handleResumeAction(
+        intent: Intent,
+        startId: Int,
+    ) {
+        if (
+            acceptsNotificationAction(
+                intent = intent,
+                currentSessionId = pausedSessionId,
+                expectedState = sessionJob?.isActive != true && pausedSessionId != null,
+            )
+        ) {
+            startSession(recoveryAuthenticated = false)
+        } else {
+            if (sessionJob?.isActive != true && pausedSessionId == null) finishService(startId)
         }
     }
 
     private suspend fun runSession(
         recoveryAuthenticated: Boolean,
         restartOnly: Boolean,
+        expectedRecoverySessionId: String?,
     ) {
         var activeSession: BotSessionEntity? = null
         try {
-            activeSession = prepareSession(recoveryAuthenticated, restartOnly) ?: return
+            activeSession =
+                prepareSession(
+                    recoveryAuthenticated,
+                    restartOnly,
+                    expectedRecoverySessionId,
+                ) ?: return
             activeSessionSnapshot.set(activeSession)
             refreshForegroundNotification(activeSession)
             monitor(activeSession)
@@ -357,15 +425,27 @@ class TradingMonitorService : Service() {
         }
     }
 
-    private fun stopPersistedSession(directive: StopDirective.UserRequested) {
+    private fun stopPersistedSession(
+        directive: StopDirective.UserRequested,
+        expectedSessionId: String? = null,
+    ) {
         scope.launch {
             val now = System.currentTimeMillis()
             val stopped =
-                app.repository.stopLatestSession(
-                    activeStates = RECOVERABLE_SESSION_STATES,
-                    stoppedAtMillis = now,
-                    stopReason = directive.reason,
-                )
+                if (expectedSessionId == null) {
+                    app.repository.stopLatestSession(
+                        activeStates = RECOVERABLE_SESSION_STATES,
+                        stoppedAtMillis = now,
+                        stopReason = directive.reason,
+                    )
+                } else {
+                    app.repository.stopSession(
+                        id = expectedSessionId,
+                        activeStates = RECOVERABLE_SESSION_STATES,
+                        stoppedAtMillis = now,
+                        stopReason = directive.reason,
+                    )
+                }
             stopped?.let { session ->
                 recordEvent("INFO", "SESSION", directive.reason, session.id, now)
             }
@@ -376,136 +456,189 @@ class TradingMonitorService : Service() {
     private suspend fun prepareSession(
         recoveryAuthenticated: Boolean,
         restartOnly: Boolean,
+        expectedRecoverySessionId: String?,
     ): BotSessionEntity? {
         val now = System.currentTimeMillis()
         val settings = app.settings.settings.first()
-        if (settings.demoMode) {
-            app.repository.observeActiveSession(RECOVERABLE_SESSION_STATES).first()?.let { session ->
-                app.repository.updateSessionStatus(
-                    id = session.id,
-                    status = STATUS_NEEDS_ATTENTION,
-                    stoppedAtMillis = now,
-                    stopReason = StopDirective.ModeChanged.reason,
-                    lastHeartbeatAtMillis = now,
-                )
-            }
-            stopDirective.compareAndSet(null, StopDirective.ModeChanged)
-            return null
-        }
-        val (latestStrategy, latestRisk) = app.repository.latestConfiguration()
-        if (latestStrategy == null || latestRisk == null) {
-            recordEvent("ERROR", "SESSION", "CONFIGURATION_MISSING", null, now)
-            stopDirective.compareAndSet(null, StopDirective.PreflightFailed("CONFIGURATION_MISSING"))
-            return null
-        }
-
-        val policy =
-            RetentionPolicy(
-                snapshotDays = settings.snapshotRetentionDays,
-                maximumEvents = settings.maximumStoredEvents,
-            )
-        retentionPolicy = policy
-        val heartbeatPolicy = SessionHeartbeatFreshnessPolicy()
-        app.repository.expireStaleSessions(heartbeatPolicy.staleCutoffMillis(now), now)
-        val recoverable = app.repository.observeActiveSession(RECOVERABLE_SESSION_STATES).first()
-        if (restartOnly && recoverable?.status !in AUTOMATIC_RESTART_SESSION_STATES) {
-            stopDirective.compareAndSet(null, StopDirective.RestartNotRequired)
-            return null
-        }
-        val strategy =
-            if (recoverable == null) {
-                latestStrategy
-            } else {
-                app.database.configDao().strategyByVersion(recoverable.strategyVersion)
-            }
-        val risk =
-            if (recoverable == null) {
-                latestRisk
-            } else {
-                app.database.configDao().riskByVersion(recoverable.riskVersion)
-            }
-        if (strategy == null || risk == null) {
+        if (stopForDemoMode(settings, now)) return null
+        val latest = latestConfiguration(now) ?: return null
+        val preparation =
+            prepareRecovery(
+                settings,
+                now,
+                restartOnly,
+                expectedRecoverySessionId,
+            ) ?: return null
+        val configuration = sessionConfiguration(preparation.recoverable, latest)
+        if (configuration == null) {
             return stopBeforeMonitoring(
-                existingSession = recoverable,
-                strategy = latestStrategy,
-                risk = latestRisk,
+                existingSession = preparation.recoverable,
+                strategy = latest.strategy,
+                risk = latest.risk,
                 mode = settings.operatingMode.name,
                 reason = "SESSION_CONFIGURATION_MISSING",
                 nowMillis = now,
             )
         }
-        val cleanup = app.repository.cleanup(policy, now, ACTIVE_CANDIDATE_STATES)
-        if (cleanup.remainingCandidates >= policy.maximumCandidates) {
+        if (!candidateCapacityAvailable(preparation.policy, now)) {
             return stopBeforeMonitoring(
-                existingSession = recoverable,
-                strategy = strategy,
-                risk = risk,
+                existingSession = preparation.recoverable,
+                strategy = configuration.strategy,
+                risk = configuration.risk,
                 mode = settings.operatingMode.name,
                 reason = "CANDIDATE_STORAGE_CAP_REACHED",
                 nowMillis = now,
             )
         }
-        val accessMode =
-            persistedWalletAccessMode(
-                app.repository.walletSecretEnvelope()?.keystoreAccessMode,
+        val preflight = monitoringPreflight(settings, preparation.recoverable, configuration.risk, now)
+        if (preflight.startAction != SessionStartAction.START_MONITORING) {
+            val reason =
+                if (preflight.startAction == SessionStartAction.LIVE_EXECUTION_LOCKED) {
+                    "LIVE_EXECUTION_LOCKED"
+                } else {
+                    "PREFLIGHT_FAILED"
+                }
+            return stopBeforeMonitoring(
+                existingSession = preparation.recoverable,
+                strategy = configuration.strategy,
+                risk = configuration.risk,
+                mode = settings.operatingMode.name,
+                reason = reason,
+                nowMillis = now,
             )
-        val configured = requiredProviderKeysConfigured()
-        val healthy = requiredProvidersHealthy(risk, now)
-        val validRisk = risk.isValidForMonitoring()
+        }
+        if (preparation.recoverable != null) {
+            return recoverSession(
+                session = preparation.recoverable,
+                configuration = configuration,
+                context = preflight.toRecoveryContext(recoveryAuthenticated, now),
+            )
+        }
+        return createMonitoringSession(settings, configuration, preflight.providersHealthy, now)
+    }
 
+    private suspend fun stopForDemoMode(
+        settings: AppSettings,
+        nowMillis: Long,
+    ): Boolean {
+        if (!settings.demoMode) return false
+        app.repository.observeActiveSession(RECOVERABLE_SESSION_STATES).first()?.let { session ->
+            app.repository.updateSessionStatus(
+                id = session.id,
+                status = STATUS_NEEDS_ATTENTION,
+                stoppedAtMillis = nowMillis,
+                stopReason = StopDirective.ModeChanged.reason,
+                lastHeartbeatAtMillis = nowMillis,
+            )
+        }
+        stopDirective.compareAndSet(null, StopDirective.ModeChanged)
+        return true
+    }
+
+    private suspend fun latestConfiguration(nowMillis: Long): SessionConfiguration? {
+        val (strategy, risk) = app.repository.latestConfiguration()
+        if (strategy != null && risk != null) return SessionConfiguration(strategy, risk)
+        recordEvent("ERROR", "SESSION", "CONFIGURATION_MISSING", null, nowMillis)
+        stopDirective.compareAndSet(null, StopDirective.PreflightFailed("CONFIGURATION_MISSING"))
+        return null
+    }
+
+    private suspend fun prepareRecovery(
+        settings: AppSettings,
+        nowMillis: Long,
+        restartOnly: Boolean,
+        expectedRecoverySessionId: String?,
+    ): SessionPreparation? {
+        val policy = RetentionPolicy(settings.snapshotRetentionDays, settings.maximumStoredEvents)
+        retentionPolicy = policy
+        val heartbeatPolicy = SessionHeartbeatFreshnessPolicy()
+        app.repository.expireStaleSessions(heartbeatPolicy.staleCutoffMillis(nowMillis), nowMillis)
+        val recoverable = app.repository.observeActiveSession(RECOVERABLE_SESSION_STATES).first()
+        if (expectedRecoverySessionId != null && recoverable?.id != expectedRecoverySessionId) {
+            recordEvent("ERROR", "RECOVERY", "RECOVERY_STATE_CHANGED", expectedRecoverySessionId, nowMillis)
+            stopDirective.compareAndSet(null, StopDirective.RestartNotRequired)
+            return null
+        }
+        if (restartOnly && recoverable?.status !in AUTOMATIC_RESTART_SESSION_STATES) {
+            stopDirective.compareAndSet(null, StopDirective.RestartNotRequired)
+            return null
+        }
+        return SessionPreparation(policy, recoverable)
+    }
+
+    private suspend fun sessionConfiguration(
+        recoverable: BotSessionEntity?,
+        latest: SessionConfiguration,
+    ): SessionConfiguration? {
+        if (recoverable == null) return latest
+        val strategy = app.database.configDao().strategyByVersion(recoverable.strategyVersion)
+        val risk = app.database.configDao().riskByVersion(recoverable.riskVersion)
+        return if (strategy == null || risk == null) null else SessionConfiguration(strategy, risk)
+    }
+
+    private suspend fun candidateCapacityAvailable(
+        policy: RetentionPolicy,
+        nowMillis: Long,
+    ): Boolean =
+        app.repository.cleanup(policy, nowMillis, ACTIVE_CANDIDATE_STATES).remainingCandidates <
+            policy.maximumCandidates
+
+    private suspend fun monitoringPreflight(
+        settings: AppSettings,
+        recoverable: BotSessionEntity?,
+        risk: RiskConfigEntity,
+        nowMillis: Long,
+    ): MonitoringPreflight {
+        val walletEnvelope = app.repository.walletSecretEnvelope()
+        val accessMode = persistedWalletAccessMode(walletEnvelope?.keystoreAccessMode)
+        val configured = requiredProviderKeysConfigured()
+        val healthy = requiredProvidersHealthy(risk, nowMillis)
+        val validRisk = risk.isValidForMonitoring()
+        val freshStartPrerequisitesReady =
+            !requiresFreshStartPrerequisites(recoverable) ||
+                run {
+                    val wallet = app.repository.walletProfile()
+                    wallet != null &&
+                        wallet.backupConfirmedAtMillis != null &&
+                        walletEnvelope?.walletProfileId == wallet.id &&
+                        canPostNotifications(
+                            StartExApplication.CHANNEL_BOT_STATUS,
+                            StartExApplication.CHANNEL_CRITICAL,
+                        ) &&
+                        DeviceHealthEntryPolicy.blockReason(currentDeviceHealth()) == null
+                }
         val startAction =
             MonitoringSessionPolicy.startAction(
                 operatingMode = settings.operatingMode,
                 persistedSessionMode = recoverable?.mode,
                 providersConfigured = configured,
                 riskLimitsValid = validRisk,
+                freshStartPrerequisitesReady = freshStartPrerequisitesReady,
             )
-        if (startAction != SessionStartAction.START_MONITORING) {
-            val reason =
-                if (startAction == SessionStartAction.LIVE_EXECUTION_LOCKED) {
-                    "LIVE_EXECUTION_LOCKED"
-                } else {
-                    "PREFLIGHT_FAILED"
-                }
-            return stopBeforeMonitoring(
-                existingSession = recoverable,
-                strategy = strategy,
-                risk = risk,
-                mode = settings.operatingMode.name,
-                reason = reason,
-                nowMillis = now,
-            )
-        }
+        return MonitoringPreflight(accessMode, configured, healthy, validRisk, startAction)
+    }
 
-        if (recoverable != null) {
-            return recoverSession(
-                session = recoverable,
-                strategy = strategy,
-                risk = risk,
-                accessMode = accessMode,
-                recoveryAuthenticated = recoveryAuthenticated,
-                providersConfigured = configured,
-                providersHealthy = healthy,
-                riskLimitsValid = validRisk,
-                nowMillis = now,
-            )
-        }
-
+    private suspend fun createMonitoringSession(
+        settings: AppSettings,
+        configuration: SessionConfiguration,
+        providersHealthy: Boolean,
+        nowMillis: Long,
+    ): BotSessionEntity {
         val session =
             BotSessionEntity(
                 id = UUID.randomUUID().toString(),
                 mode = settings.operatingMode.name,
                 status = STATUS_RUNNING,
-                strategyVersion = strategy.version,
-                riskVersion = risk.version,
-                startedAtMillis = now,
+                strategyVersion = configuration.strategy.version,
+                riskVersion = configuration.risk.version,
+                startedAtMillis = nowMillis,
                 stoppedAtMillis = null,
                 stopReason = null,
-                lastHeartbeatAtMillis = now,
+                lastHeartbeatAtMillis = nowMillis,
             )
         app.repository.saveSession(session)
-        recordEvent("INFO", "SESSION", "MONITORING_STARTED", session.id, now)
-        if (!healthy) recordEvent("WARN", "PROVIDER", "HEALTH_CHECK_PENDING", session.id, now)
+        recordEvent("INFO", "SESSION", "MONITORING_STARTED", session.id, nowMillis)
+        if (!providersHealthy) recordEvent("WARN", "PROVIDER", "HEALTH_CHECK_PENDING", session.id, nowMillis)
         return session
     }
 
@@ -545,24 +678,18 @@ class TradingMonitorService : Service() {
 
     private suspend fun recoverSession(
         session: BotSessionEntity,
-        strategy: StrategyConfigEntity,
-        risk: RiskConfigEntity,
-        accessMode: WalletAccessMode,
-        recoveryAuthenticated: Boolean,
-        providersConfigured: Boolean,
-        providersHealthy: Boolean,
-        riskLimitsValid: Boolean,
-        nowMillis: Long,
+        configuration: SessionConfiguration,
+        context: RecoveryContext,
     ): BotSessionEntity? {
         val originalConfigurationAvailable =
-            session.strategyVersion == strategy.version && session.riskVersion == risk.version
+            session.strategyVersion == configuration.strategy.version && session.riskVersion == configuration.risk.version
         val action =
             MonitoringSessionPolicy.recoveryAction(
-                accessMode = accessMode,
-                recoveryAuthenticated = recoveryAuthenticated,
-                providersConfigured = providersConfigured,
-                providersHealthy = providersHealthy,
-                riskLimitsValid = riskLimitsValid && originalConfigurationAvailable,
+                accessMode = context.accessMode,
+                recoveryAuthenticated = context.recoveryAuthenticated,
+                providersConfigured = context.providersConfigured,
+                providersHealthy = context.providersHealthy,
+                riskLimitsValid = context.riskLimitsValid && originalConfigurationAvailable,
             )
         if (action == RecoveryAction.REQUIRE_AUTHENTICATION || action == RecoveryAction.NOTIFY_AND_STOP) {
             val reason =
@@ -574,18 +701,18 @@ class TradingMonitorService : Service() {
             app.repository.updateSessionStatus(
                 id = session.id,
                 status = STATUS_NEEDS_ATTENTION,
-                stoppedAtMillis = nowMillis,
+                stoppedAtMillis = context.nowMillis,
                 stopReason = reason,
-                lastHeartbeatAtMillis = nowMillis,
+                lastHeartbeatAtMillis = context.nowMillis,
             )
-            recordEvent("ERROR", "RECOVERY", reason, session.id, nowMillis)
+            recordEvent("ERROR", "RECOVERY", reason, session.id, context.nowMillis)
             stopDirective.compareAndSet(null, StopDirective.PreflightFailed(reason))
             return null
         }
 
-        if (recoveryAuthenticated) {
+        if (context.recoveryAuthenticated) {
             paperFinalStateGate.run {
-                app.repository.resetPaperCircuitBreaker(Instant.ofEpochMilli(nowMillis), authenticated = true)
+                app.repository.resetPaperCircuitBreaker(Instant.ofEpochMilli(context.nowMillis), authenticated = true)
             }
         }
 
@@ -601,7 +728,7 @@ class TradingMonitorService : Service() {
                 } else {
                     null
                 },
-            lastHeartbeatAtMillis = nowMillis,
+            lastHeartbeatAtMillis = context.nowMillis,
         )
         recordEvent(
             "WARN",
@@ -612,7 +739,7 @@ class TradingMonitorService : Service() {
                 "MONITOR_ONLY_RECOVERY"
             },
             session.id,
-            nowMillis,
+            context.nowMillis,
         )
         return session.copy(
             status = recoveredStatus,
@@ -623,7 +750,7 @@ class TradingMonitorService : Service() {
                 } else {
                     null
                 },
-            lastHeartbeatAtMillis = nowMillis,
+            lastHeartbeatAtMillis = context.nowMillis,
         )
     }
 
@@ -668,45 +795,18 @@ class TradingMonitorService : Service() {
         var consecutiveFailures = 0
 
         while (currentCoroutineContext().isActive) {
-            val disconnected = CompletableDeferred<DiscoveryDisconnect>()
-            val listenerActive = AtomicBoolean(true)
-            val firstEvent = AtomicBoolean(true)
-            val lastEventAtMillis = AtomicLong(System.currentTimeMillis())
-            val connectionResult =
-                provider.connect(
-                    object : PumpPortalEventListener {
-                        override fun onEvent(event: PumpPortalEvent) {
-                            if (!listenerActive.get()) return
-                            val observed =
-                                ObservedPumpEvent(
-                                    event = event,
-                                    observedAtMillis = System.currentTimeMillis(),
-                                    firstOnConnection = firstEvent.compareAndSet(true, false),
-                                )
-                            lastEventAtMillis.set(observed.observedAtMillis)
-                            if (events.trySend(observed).isFailure) {
-                                disconnected.complete(DiscoveryDisconnect.BufferFull)
-                            }
-                        }
-
-                        override fun onError(error: ProviderError) {
-                            if (listenerActive.get()) {
-                                disconnected.complete(DiscoveryDisconnect.ProviderFailure(error))
-                            }
-                        }
-                    },
-                )
+            val attempt = connectDiscovery(provider, events)
 
             val connection =
-                when (connectionResult) {
+                when (val result = attempt.result) {
                     is ProviderResult.Success -> {
-                        connectionResult.value
+                        result.value
                     }
 
                     is ProviderResult.Failure -> {
                         val shouldContinue =
                             handleProviderFailure(
-                                error = connectionResult.error,
+                                error = result.error,
                                 failureCount = ++consecutiveFailures,
                                 reconnectPolicy = reconnectPolicy,
                             )
@@ -718,23 +818,13 @@ class TradingMonitorService : Service() {
             val disconnect =
                 awaitDisconnect(
                     connection = connection,
-                    disconnected = disconnected,
-                    listenerActive = listenerActive,
-                    lastEventAtMillis = lastEventAtMillis,
+                    disconnected = attempt.disconnected,
+                    listenerActive = attempt.listenerActive,
+                    lastEventAtMillis = attempt.lastEventAtMillis,
                 )
-            if (disconnect == DiscoveryDisconnect.BufferFull) {
-                recordEvent(
-                    severity = "ERROR",
-                    category = "PROVIDER",
-                    code = "DISCOVERY_BUFFER_FULL",
-                    relatedId = session.id,
-                    nowMillis = System.currentTimeMillis(),
-                )
-                requestStop(StopDirective.ProviderUnavailable("DISCOVERY_BUFFER_FULL"))
-                return
-            }
+            if (stopForDiscoveryBufferFull(session, disconnect)) return
 
-            if (!firstEvent.get()) consecutiveFailures = 0
+            if (!attempt.firstEvent.get()) consecutiveFailures = 0
             val error = (disconnect as DiscoveryDisconnect.ProviderFailure).error
             val shouldContinue =
                 handleProviderFailure(
@@ -744,6 +834,57 @@ class TradingMonitorService : Service() {
                 )
             if (!shouldContinue) return
         }
+    }
+
+    private suspend fun connectDiscovery(
+        provider: PumpPortalDiscoveryProvider,
+        events: Channel<ObservedPumpEvent>,
+    ): DiscoveryConnectionAttempt {
+        val disconnected = CompletableDeferred<DiscoveryDisconnect>()
+        val listenerActive = AtomicBoolean(true)
+        val firstEvent = AtomicBoolean(true)
+        val lastEventAtMillis = AtomicLong(System.currentTimeMillis())
+        val result =
+            provider.connect(
+                object : PumpPortalEventListener {
+                    override fun onEvent(event: PumpPortalEvent) {
+                        if (!listenerActive.get()) return
+                        val observed =
+                            ObservedPumpEvent(
+                                event = event,
+                                observedAtMillis = System.currentTimeMillis(),
+                                firstOnConnection = firstEvent.compareAndSet(true, false),
+                            )
+                        lastEventAtMillis.set(observed.observedAtMillis)
+                        if (events.trySend(observed).isFailure) {
+                            disconnected.complete(DiscoveryDisconnect.BufferFull)
+                        }
+                    }
+
+                    override fun onError(error: ProviderError) {
+                        if (listenerActive.get()) {
+                            disconnected.complete(DiscoveryDisconnect.ProviderFailure(error))
+                        }
+                    }
+                },
+            )
+        return DiscoveryConnectionAttempt(result, disconnected, listenerActive, firstEvent, lastEventAtMillis)
+    }
+
+    private suspend fun stopForDiscoveryBufferFull(
+        session: BotSessionEntity,
+        disconnect: DiscoveryDisconnect,
+    ): Boolean {
+        if (disconnect != DiscoveryDisconnect.BufferFull) return false
+        recordEvent(
+            severity = "ERROR",
+            category = "PROVIDER",
+            code = "DISCOVERY_BUFFER_FULL",
+            relatedId = session.id,
+            nowMillis = System.currentTimeMillis(),
+        )
+        requestStop(StopDirective.ProviderUnavailable("DISCOVERY_BUFFER_FULL"))
+        return true
     }
 
     private suspend fun awaitDisconnect(
@@ -808,71 +949,94 @@ class TradingMonitorService : Service() {
     ) {
         var lastPumpHealthAtMillis = 0L
         for (observed in events) {
-            val candidateInsert = persistCandidate(observed)
-            if (candidateInsert == CandidateInsertResult.CAP_REACHED) {
-                recordEvent(
-                    severity = "ERROR",
-                    category = "STORAGE",
-                    code = "CANDIDATE_STORAGE_CAP_REACHED",
-                    relatedId = session.id,
-                    nowMillis = observed.observedAtMillis,
-                )
-                requestStop(StopDirective.StorageCapacity)
-                return
-            }
-            if (
-                observed.firstOnConnection ||
-                observed.observedAtMillis - lastPumpHealthAtMillis >= PROVIDER_HEALTH_WRITE_INTERVAL_MILLIS
-            ) {
-                recordPumpPortalHealthy(observed.observedAtMillis)
-                lastPumpHealthAtMillis = observed.observedAtMillis
-            }
+            lastPumpHealthAtMillis =
+                consumeEvent(session, observed, candidates, dispatch, lastPumpHealthAtMillis) ?: return
+        }
+    }
+
+    private suspend fun consumeEvent(
+        session: BotSessionEntity,
+        observed: ObservedPumpEvent,
+        candidates: Channel<String>,
+        dispatch: PaperCandidateDispatchPolicy,
+        lastPumpHealthAtMillis: Long,
+    ): Long? {
+        val candidateInsert = persistCandidate(observed)
+        if (candidateInsert == CandidateInsertResult.CAP_REACHED) {
             recordEvent(
-                severity = "INFO",
-                category = "DISCOVERY",
-                code =
-                    if (observed.event.kind == PumpPortalEventKind.NEW_TOKEN) {
-                        "CANDIDATE_DISCOVERED"
-                    } else {
-                        "MIGRATION_DISCOVERED"
-                    },
-                relatedId = observed.event.mint,
+                severity = "ERROR",
+                category = "STORAGE",
+                code = "CANDIDATE_STORAGE_CAP_REACHED",
+                relatedId = session.id,
                 nowMillis = observed.observedAtMillis,
             )
-            app.repository.touchSessionHeartbeat(session.id, observed.observedAtMillis)
-            if (candidateInsert == CandidateInsertResult.INSERTED && !protectingOnly.get()) {
-                when (dispatch.tryAdmit(observed.event.mint)) {
-                    PaperCandidateDispatch.ADMIT -> {
-                        if (candidates.trySend(observed.event.mint).isFailure) {
-                            dispatch.complete(observed.event.mint)
-                            rejectObservationQueueCandidate(observed.event.mint, observed.observedAtMillis)
-                            recordEvent(
-                                severity = "WARN",
-                                category = "CANDIDATE",
-                                code = "OBSERVATION_QUEUE_FULL",
-                                relatedId = observed.event.mint,
-                                nowMillis = observed.observedAtMillis,
-                            )
-                        }
-                    }
+            requestStop(StopDirective.StorageCapacity)
+            return null
+        }
+        val latestHealthWrite = recordPumpHealthIfNeeded(observed, lastPumpHealthAtMillis)
+        recordDiscoveryEvent(observed)
+        app.repository.touchSessionHeartbeat(session.id, observed.observedAtMillis)
+        if (candidateInsert == CandidateInsertResult.INSERTED && !protectingOnly.get()) {
+            dispatchCandidate(observed, candidates, dispatch)
+        }
+        return latestHealthWrite
+    }
 
-                    PaperCandidateDispatch.DUPLICATE -> {
-                        Unit
-                    }
+    private suspend fun recordPumpHealthIfNeeded(
+        observed: ObservedPumpEvent,
+        lastPumpHealthAtMillis: Long,
+    ): Long {
+        val writeRequired =
+            observed.firstOnConnection ||
+                observed.observedAtMillis - lastPumpHealthAtMillis >= PROVIDER_HEALTH_WRITE_INTERVAL_MILLIS
+        if (!writeRequired) return lastPumpHealthAtMillis
+        recordPumpPortalHealthy(observed.observedAtMillis)
+        return observed.observedAtMillis
+    }
 
-                    PaperCandidateDispatch.FULL -> {
-                        rejectObservationQueueCandidate(observed.event.mint, observed.observedAtMillis)
-                        recordEvent(
-                            severity = "WARN",
-                            category = "CANDIDATE",
-                            code = "OBSERVATION_QUEUE_FULL",
-                            relatedId = observed.event.mint,
-                            nowMillis = observed.observedAtMillis,
-                        )
-                    }
+    private suspend fun recordDiscoveryEvent(observed: ObservedPumpEvent) {
+        val code =
+            if (observed.event.kind == PumpPortalEventKind.NEW_TOKEN) {
+                "CANDIDATE_DISCOVERED"
+            } else {
+                "MIGRATION_DISCOVERED"
+            }
+        recordEvent("INFO", "DISCOVERY", code, observed.event.mint, observed.observedAtMillis)
+    }
+
+    private suspend fun dispatchCandidate(
+        observed: ObservedPumpEvent,
+        candidates: Channel<String>,
+        dispatch: PaperCandidateDispatchPolicy,
+    ) {
+        val mint = observed.event.mint
+        when (dispatch.tryAdmit(mint)) {
+            PaperCandidateDispatch.ADMIT -> {
+                if (candidates.trySend(mint).isFailure) {
+                    dispatch.complete(mint)
+                    rejectFullObservationQueue(observed)
                 }
             }
+
+            PaperCandidateDispatch.DUPLICATE -> {
+                Unit
+            }
+
+            PaperCandidateDispatch.FULL -> {
+                rejectFullObservationQueue(observed)
+            }
         }
+    }
+
+    private suspend fun rejectFullObservationQueue(observed: ObservedPumpEvent) {
+        rejectObservationQueueCandidate(observed.event.mint, observed.observedAtMillis)
+        recordEvent(
+            severity = "WARN",
+            category = "CANDIDATE",
+            code = "OBSERVATION_QUEUE_FULL",
+            relatedId = observed.event.mint,
+            nowMillis = observed.observedAtMillis,
+        )
     }
 
     private suspend fun rejectObservationQueueCandidate(
@@ -993,17 +1157,15 @@ class TradingMonitorService : Service() {
         risk: RiskConfigEntity,
     ) = PaperCandidateCoordinator(
         tokens =
-            object : JupiterTokensProvider {
-                override suspend fun tokenSnapshot(mint: String): ProviderResult<JupiterTokenSnapshot> {
-                    val startedAt = System.currentTimeMillis()
-                    val result = app.jupiterTokens.tokenSnapshot(mint)
-                    recordProviderResult(
-                        provider = ProviderId.JUPITER,
-                        result = result,
-                        startedAtMillis = startedAt,
-                    )
-                    return result
-                }
+            JupiterTokensProvider { mint ->
+                val startedAt = System.currentTimeMillis()
+                val result = app.jupiterTokens.tokenSnapshot(mint)
+                recordProviderResult(
+                    provider = ProviderId.JUPITER,
+                    result = result,
+                    startedAtMillis = startedAt,
+                )
+                result
             },
         quotes =
             PaperSwapQuoteSource { request ->
@@ -1070,88 +1232,69 @@ class TradingMonitorService : Service() {
         strategy: StrategyConfigEntity,
         risk: RiskConfigEntity,
     ) = DefaultPaperCandidateSafetyProofSource(
-        evidenceSource =
-            PaperCandidateSafetyEvidenceSource evidence@{ mint ->
-                val candidate = app.database.candidateDao().byMint(mint) ?: return@evidence null
-                if (
-                    candidate.source !in PUMP_CANDIDATE_SOURCES ||
-                    candidate.discoverySignature.isNullOrBlank()
-                ) {
-                    return@evidence null
-                }
-                val tokenStartedAt = System.currentTimeMillis()
-                val tokenResult = app.jupiterTokens.tokenSnapshot(mint)
-                recordProviderResult(ProviderId.JUPITER, tokenResult, tokenStartedAt)
-                val tokenSuccess =
-                    when (tokenResult) {
-                        is ProviderResult.Success -> tokenResult
-                        is ProviderResult.Failure -> return@evidence null
-                    }
-
-                val accountStartedAt = System.currentTimeMillis()
-                val accountResult = app.heliusRpc.getAccountInfo(mint)
-                recordProviderResult(ProviderId.HELIUS, accountResult, accountStartedAt)
-                val accountSuccess =
-                    when (accountResult) {
-                        is ProviderResult.Success -> accountResult
-                        is ProviderResult.Failure -> return@evidence null
-                    }
-                val account = accountSuccess.value ?: return@evidence null
-                val token = tokenSuccess.value
-                if (account.executable || account.owner != token.tokenProgram) return@evidence null
-
-                PaperCandidateSafetyEvidence(
-                    pumpMint = mint,
-                    suspiciousWalletActivity =
-                        token.audit.isSuspicious ||
-                            !token.audit.mintAuthorityDisabled ||
-                            !token.audit.freezeAuthorityDisabled,
-                    quoteSemanticsValidated = false,
-                    unsupportedRouteBehavior = true,
-                    observedAt =
-                        Instant.ofEpochMilli(
-                            minOf(
-                                candidate.discoveredAtMillis,
-                                token.updatedAtMillis,
-                                accountSuccess.receivedAtMillis,
-                            ),
-                        ),
-                    // Parsed Token-2022 extensions are not exposed by the current RPC adapter.
-                    // Leaving this absent deliberately makes Token-2022 candidates fail closed.
-                    token2022ExtensionProof = null,
-                )
-            },
-        solUsdRates =
-            PaperSolUsdRateSource rate@{
-                val startedAt = System.currentTimeMillis()
-                val result = app.jupiterTokens.tokenSnapshot(WRAPPED_SOL_MINT)
-                recordProviderResult(ProviderId.JUPITER, result, startedAt)
-                val token =
-                    when (result) {
-                        is ProviderResult.Success -> result.value
-                        is ProviderResult.Failure -> return@rate null
-                    }
-                if (
-                    token.mint != WRAPPED_SOL_MINT ||
-                    token.decimals != SOL_DECIMALS ||
-                    token.tokenProgram != LEGACY_TOKEN_PROGRAM_ID
-                ) {
-                    return@rate null
-                }
-                val rate = token.usdPrice?.takeIf { it.signum() > 0 } ?: return@rate null
-                // One WSOL represents one SOL, so its unit USD price is the exact USD/SOL conversion.
-                PaperSolUsdRate(rate, Instant.ofEpochMilli(token.updatedAtMillis))
-            },
+        evidenceSource = PaperCandidateSafetyEvidenceSource { mint -> paperCandidateSafetyEvidence(mint) },
+        solUsdRates = PaperSolUsdRateSource { paperSolUsdRate() },
         maximumSourceAge =
             Duration.ofMillis(
                 minOf(strategy.maximumCandidateAgeMillis, risk.maximumCandidateAgeMillis),
             ),
     )
 
+    private suspend fun paperCandidateSafetyEvidence(mint: String): PaperCandidateSafetyEvidence? {
+        val candidate = app.database.candidateDao().byMint(mint) ?: return null
+        if (candidate.source !in PUMP_CANDIDATE_SOURCES || candidate.discoverySignature.isNullOrBlank()) return null
+
+        val tokenStartedAt = System.currentTimeMillis()
+        val tokenResult = app.jupiterTokens.tokenSnapshot(mint)
+        recordProviderResult(ProviderId.JUPITER, tokenResult, tokenStartedAt)
+        val token = (tokenResult as? ProviderResult.Success)?.value ?: return null
+
+        val accountStartedAt = System.currentTimeMillis()
+        val accountResult = app.heliusRpc.getAccountInfo(mint)
+        recordProviderResult(ProviderId.HELIUS, accountResult, accountStartedAt)
+        val accountSuccess = accountResult as? ProviderResult.Success ?: return null
+        val account = accountSuccess.value ?: return null
+        if (account.executable || account.owner != token.tokenProgram) return null
+
+        return PaperCandidateSafetyEvidence(
+            pumpMint = mint,
+            suspiciousWalletActivity =
+                token.audit.isSuspicious ||
+                    !token.audit.mintAuthorityDisabled ||
+                    !token.audit.freezeAuthorityDisabled,
+            quoteSemanticsValidated = false,
+            unsupportedRouteBehavior = true,
+            observedAt =
+                Instant.ofEpochMilli(
+                    minOf(candidate.discoveredAtMillis, token.updatedAtMillis, accountSuccess.receivedAtMillis),
+                ),
+            // Parsed Token-2022 extensions are not exposed by the current RPC adapter.
+            // Leaving this absent deliberately makes Token-2022 candidates fail closed.
+            token2022ExtensionProof = null,
+        )
+    }
+
+    private suspend fun paperSolUsdRate(): PaperSolUsdRate? {
+        val startedAt = System.currentTimeMillis()
+        val result = app.jupiterTokens.tokenSnapshot(WRAPPED_SOL_MINT)
+        recordProviderResult(ProviderId.JUPITER, result, startedAt)
+        val token = (result as? ProviderResult.Success)?.value ?: return null
+        if (
+            token.mint != WRAPPED_SOL_MINT ||
+            token.decimals != SOL_DECIMALS ||
+            token.tokenProgram != LEGACY_TOKEN_PROGRAM_ID
+        ) {
+            return null
+        }
+        val rate = token.usdPrice?.takeIf { it.signum() > 0 } ?: return null
+        // One WSOL represents one SOL, so its unit USD price is the exact USD/SOL conversion.
+        return PaperSolUsdRate(rate, Instant.ofEpochMilli(token.updatedAtMillis))
+    }
+
     private fun paperRiskFactsSource() =
         DefaultPaperRiskFactsSource(
             runtimeSnapshots =
-                PaperRiskRuntimeSnapshotSource snapshot@{ sessionId, now ->
+                PaperRiskRuntimeSnapshotSource snapshot@{ _, now ->
                     val wallet = app.repository.walletProfile() ?: return@snapshot null
                     val balanceStartedAt = System.currentTimeMillis()
                     val balanceResult = app.heliusRpc.getBalance(wallet.publicAddress)
@@ -1285,9 +1428,6 @@ class TradingMonitorService : Service() {
                             is ProviderResult.Success -> tokenResult.value
                             is ProviderResult.Failure -> return@safety null
                         }
-                    val age = now.toEpochMilli() - token.updatedAtMillis
-                    if (age !in 0..risk.minimumDataFreshnessMillis) return@safety null
-
                     val accountStartedAt = System.currentTimeMillis()
                     val accountResult = app.heliusRpc.getAccountInfo(position.mint)
                     recordProviderResult(ProviderId.HELIUS, accountResult, accountStartedAt)
@@ -1296,48 +1436,11 @@ class TradingMonitorService : Service() {
                             is ProviderResult.Success -> accountResult.value
                             is ProviderResult.Failure -> return@safety null
                         } ?: return@safety null
-                    if (
-                        account.executable ||
-                        account.owner != token.tokenProgram ||
-                        token.tokenProgram != LEGACY_TOKEN_PROGRAM_ID
-                    ) {
-                        return@safety null
-                    }
-
-                    val momentumCollapsed = token.stats5m.sellCount > token.stats5m.buyCount
-                    val suspiciousCreator =
-                        token.audit.developerBalancePercentage
-                            ?.let { it > MAXIMUM_SAFE_DEVELOPER_PERCENT }
-                            ?: true
-                    val largeHolderSell = token.audit.topHoldersPercentage > MAXIMUM_SAFE_TOP_HOLDER_PERCENT
-                    val tokenUnsafe =
-                        token.audit.isSuspicious ||
-                            !token.audit.mintAuthorityDisabled ||
-                            !token.audit.freezeAuthorityDisabled
-                    val concentrationPenalty =
-                        token.audit.topHoldersPercentage
-                            .setScale(0, java.math.RoundingMode.CEILING)
-                            .intValueExact()
-                            .coerceIn(0, 40)
-                    val creatorPenalty =
-                        token.audit.developerBalancePercentage
-                            ?.setScale(0, java.math.RoundingMode.CEILING)
-                            ?.intValueExact()
-                            ?.coerceIn(0, 30)
-                            ?: 30
-                    PaperExitSafetyFacts(
-                        score =
-                            if (tokenUnsafe) {
-                                0
-                            } else {
-                                (100 - concentrationPenalty - creatorPenalty - if (momentumCollapsed) 20 else 0)
-                                    .coerceIn(0, 100)
-                            },
-                        tokenUnsafe = tokenUnsafe,
-                        momentumCollapsed = momentumCollapsed,
-                        liquidityCollapsed = false,
-                        suspiciousCreatorActivity = suspiciousCreator,
-                        largeHolderSell = largeHolderSell,
+                    paperExitSafetyFacts(
+                        token = token,
+                        account = account,
+                        nowMillis = now.toEpochMilli(),
+                        maximumAgeMillis = risk.minimumDataFreshnessMillis,
                     )
                 },
             persistence =
@@ -1411,17 +1514,9 @@ class TradingMonitorService : Service() {
         }
     }
 
-    @Suppress("LongMethod")
     private suspend fun monitorWalletAccount(session: BotSessionEntity) {
         val wallet = app.repository.walletProfile() ?: return
-        val balanceStartedAt = System.currentTimeMillis()
-        val balanceResult = app.heliusRpc.getBalance(wallet.publicAddress)
-        recordProviderResult(ProviderId.HELIUS, balanceResult, balanceStartedAt)
-        var lastBalance =
-            when (val balance = balanceResult) {
-                is ProviderResult.Success -> balance.value.lamports
-                is ProviderResult.Failure -> null
-            }
+        var lastBalance = initialWalletBalance(wallet.publicAddress)
         val retryPolicy =
             RetryPolicy(
                 initialDelayMillis = WALLET_REALTIME_INITIAL_RETRY_MILLIS,
@@ -1432,20 +1527,7 @@ class TradingMonitorService : Service() {
             val signals = Channel<WalletRealtimeSignal>(WALLET_REALTIME_BUFFER_CAPACITY)
             val listenerActive = AtomicBoolean(true)
             val startedAt = System.currentTimeMillis()
-            val connectionResult =
-                app.heliusWebSocket.connect(
-                    subscriptions = setOf(HeliusSubscription.Account(wallet.publicAddress)),
-                    listener =
-                        object : HeliusRealtimeListener {
-                            override fun onEvent(event: HeliusRealtimeEvent) {
-                                if (listenerActive.get()) signals.trySend(WalletRealtimeSignal.Event(event))
-                            }
-
-                            override fun onError(error: ProviderError) {
-                                if (listenerActive.get()) signals.trySend(WalletRealtimeSignal.Failure(error))
-                            }
-                        },
-                )
+            val connectionResult = connectWalletAccount(wallet.publicAddress, signals, listenerActive)
             val connection =
                 when (connectionResult) {
                     is ProviderResult.Success -> {
@@ -1459,47 +1541,86 @@ class TradingMonitorService : Service() {
                         continue
                     }
                 }
-            try {
-                while (currentCoroutineContext().isActive) {
-                    when (val signal = signals.receive()) {
-                        is WalletRealtimeSignal.Failure -> {
-                            val failedAt = System.currentTimeMillis()
-                            recordProviderResult(
-                                ProviderId.HELIUS,
-                                ProviderResult.Failure(signal.error),
-                                failedAt,
-                            )
-                            failures += 1
-                            break
-                        }
-
-                        is WalletRealtimeSignal.Event -> {
-                            val event = signal.value
-                            if (event !is HeliusRealtimeEvent.AccountChanged) continue
-                            val now = System.currentTimeMillis()
-                            recordProviderResult(
-                                ProviderId.HELIUS,
-                                ProviderResult.Success(event, now),
-                                now,
-                            )
-                            recordEvent(
-                                "INFO",
-                                "WALLET",
-                                walletAccountEventCode(lastBalance, event.lamports),
-                                session.id,
-                                now,
-                            )
-                            lastBalance = event.lamports
-                            failures = 0
-                        }
-                    }
+            val progress =
+                try {
+                    consumeWalletSignals(session, signals, lastBalance, failures)
+                } finally {
+                    listenerActive.set(false)
+                    connection.close()
                 }
-            } finally {
-                listenerActive.set(false)
-                connection.close()
-            }
+            lastBalance = progress.lastBalance
+            failures = progress.failures
             delay(retryPolicy.delayMillis(failures.coerceAtLeast(1)))
         }
+    }
+
+    private suspend fun initialWalletBalance(address: String): Long? {
+        val startedAt = System.currentTimeMillis()
+        val result = app.heliusRpc.getBalance(address)
+        recordProviderResult(ProviderId.HELIUS, result, startedAt)
+        return (result as? ProviderResult.Success)?.value?.lamports
+    }
+
+    private suspend fun connectWalletAccount(
+        address: String,
+        signals: Channel<WalletRealtimeSignal>,
+        listenerActive: AtomicBoolean,
+    ) = app.heliusWebSocket.connect(
+        subscriptions = setOf(HeliusSubscription.Account(address)),
+        listener =
+            object : HeliusRealtimeListener {
+                override fun onEvent(event: HeliusRealtimeEvent) {
+                    if (listenerActive.get()) signals.trySend(WalletRealtimeSignal.Event(event))
+                }
+
+                override fun onError(error: ProviderError) {
+                    if (listenerActive.get()) signals.trySend(WalletRealtimeSignal.Failure(error))
+                }
+            },
+    )
+
+    private suspend fun consumeWalletSignals(
+        session: BotSessionEntity,
+        signals: Channel<WalletRealtimeSignal>,
+        initialBalance: Long?,
+        initialFailures: Int,
+    ): WalletMonitorProgress {
+        var lastBalance = initialBalance
+        var failures = initialFailures
+        while (currentCoroutineContext().isActive) {
+            when (val signal = signals.receive()) {
+                is WalletRealtimeSignal.Failure -> {
+                    val failedAt = System.currentTimeMillis()
+                    recordProviderResult(
+                        ProviderId.HELIUS,
+                        ProviderResult.Failure(signal.error),
+                        failedAt,
+                    )
+                    return WalletMonitorProgress(lastBalance, failures + 1)
+                }
+
+                is WalletRealtimeSignal.Event -> {
+                    val event = signal.value
+                    if (event !is HeliusRealtimeEvent.AccountChanged) continue
+                    val now = System.currentTimeMillis()
+                    recordProviderResult(
+                        ProviderId.HELIUS,
+                        ProviderResult.Success(event, now),
+                        now,
+                    )
+                    recordEvent(
+                        "INFO",
+                        "WALLET",
+                        walletAccountEventCode(lastBalance, event.lamports),
+                        session.id,
+                        now,
+                    )
+                    lastBalance = event.lamports
+                    failures = 0
+                }
+            }
+        }
+        return WalletMonitorProgress(lastBalance, failures)
     }
 
     private suspend fun probeHeliusContinuously() {
@@ -1555,7 +1676,7 @@ class TradingMonitorService : Service() {
 
     private suspend fun requiredProviderKeysConfigured(): Boolean =
         REQUIRED_KEY_PROVIDERS.all { provider ->
-            !app.sessionApiKeys.apiKeyFor(provider).isNullOrBlank() || app.restoreSessionApiKey(provider)
+            !app.sessionApiKeys.apiKeyFor(provider).isNullOrBlank() || app.restoreSessionApiKey(provider).restored
         }
 
     private suspend fun requiredProvidersHealthy(
@@ -1831,15 +1952,20 @@ class TradingMonitorService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
         val paused = model.status == ForegroundStatus.PAUSED
+        val actionSessionId = activeSessionSnapshot.get()?.id
         val pauseOrResume =
-            PendingIntent.getService(
-                this,
-                if (paused) REQUEST_RESUME else REQUEST_PAUSE,
-                Intent(this, TradingMonitorService::class.java).setAction(
-                    if (paused) ACTION_RESUME else ACTION_PAUSE,
-                ),
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
+            actionSessionId?.let { sessionId ->
+                PendingIntent.getService(
+                    this,
+                    if (paused) REQUEST_RESUME else REQUEST_PAUSE,
+                    notificationServiceIntent(
+                        context = this,
+                        action = if (paused) ACTION_RESUME else ACTION_PAUSE,
+                        sessionId = sessionId,
+                    ),
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+                )
+            }
         return NotificationCompat
             .Builder(this, StartExApplication.CHANNEL_BOT_STATUS)
             .setSmallIcon(android.R.drawable.stat_notify_sync)
@@ -1849,8 +1975,8 @@ class TradingMonitorService : Service() {
                     R.plurals.monitor_notification_body_detail,
                     model.openPositionCount,
                     model.openPositionCount,
-                    model.pnlText,
-                    model.marketAgeText,
+                    foregroundPnlText(model),
+                    foregroundMarketAgeText(model),
                 ),
             ).setContentIntent(openApp)
             .setCategory(NotificationCompat.CATEGORY_SERVICE)
@@ -1858,19 +1984,99 @@ class TradingMonitorService : Service() {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .apply {
-                if (model.status in setOf(ForegroundStatus.PAPER_ACTIVE, ForegroundStatus.LIVE_ACTIVE)) {
+                if (
+                    pauseOrResume != null &&
+                    model.status in setOf(ForegroundStatus.PAPER_ACTIVE, ForegroundStatus.LIVE_ACTIVE)
+                ) {
                     addAction(0, getString(R.string.monitor_pause_action), pauseOrResume)
-                } else if (model.status == ForegroundStatus.PAUSED) {
+                } else if (pauseOrResume != null && model.status == ForegroundStatus.PAUSED) {
                     addAction(0, getString(R.string.monitor_resume_action), pauseOrResume)
                 }
             }.addAction(0, getString(R.string.monitor_open_action), openApp)
             .build()
     }
 
+    private fun foregroundPnlText(model: ForegroundNotificationModel): String {
+        val lamports = model.sessionPnlLamports ?: return getString(R.string.value_unavailable)
+        val value =
+            formatUserNumber(
+                value = BigDecimal.valueOf(lamports).movePointLeft(9).stripTrailingZeros(),
+                maximumFractionDigits = 9,
+                locale = resources.configuration.locales[0],
+            )
+        return getString(
+            if (lamports > 0) R.string.positive_sol_value else R.string.sol_balance_value,
+            value,
+        )
+    }
+
+    private fun foregroundMarketAgeText(model: ForegroundNotificationModel): String {
+        val seconds = model.marketAgeSeconds ?: return getString(R.string.value_unavailable)
+        val (resource, value) =
+            when {
+                seconds < 60 -> R.plurals.market_age_seconds to seconds
+                seconds < 3_600 -> R.plurals.market_age_minutes to seconds / 60
+                else -> R.plurals.market_age_hours to seconds / 3_600
+            }
+        return resources.getQuantityString(resource, if (value == 1L) 1 else 2, value)
+    }
+
     private data class ObservedPumpEvent(
         val event: PumpPortalEvent,
         val observedAtMillis: Long,
         val firstOnConnection: Boolean,
+    )
+
+    private data class SessionConfiguration(
+        val strategy: StrategyConfigEntity,
+        val risk: RiskConfigEntity,
+    )
+
+    private data class SessionPreparation(
+        val policy: RetentionPolicy,
+        val recoverable: BotSessionEntity?,
+    )
+
+    private data class MonitoringPreflight(
+        val accessMode: WalletAccessMode,
+        val providersConfigured: Boolean,
+        val providersHealthy: Boolean,
+        val riskLimitsValid: Boolean,
+        val startAction: SessionStartAction,
+    ) {
+        fun toRecoveryContext(
+            recoveryAuthenticated: Boolean,
+            nowMillis: Long,
+        ) = RecoveryContext(
+            accessMode = accessMode,
+            recoveryAuthenticated = recoveryAuthenticated,
+            providersConfigured = providersConfigured,
+            providersHealthy = providersHealthy,
+            riskLimitsValid = riskLimitsValid,
+            nowMillis = nowMillis,
+        )
+    }
+
+    private data class RecoveryContext(
+        val accessMode: WalletAccessMode,
+        val recoveryAuthenticated: Boolean,
+        val providersConfigured: Boolean,
+        val providersHealthy: Boolean,
+        val riskLimitsValid: Boolean,
+        val nowMillis: Long,
+    )
+
+    private data class DiscoveryConnectionAttempt(
+        val result: ProviderResult<PumpPortalConnection>,
+        val disconnected: CompletableDeferred<DiscoveryDisconnect>,
+        val listenerActive: AtomicBoolean,
+        val firstEvent: AtomicBoolean,
+        val lastEventAtMillis: AtomicLong,
+    )
+
+    private data class WalletMonitorProgress(
+        val lastBalance: Long?,
+        val failures: Int,
     )
 
     private sealed interface WalletRealtimeSignal {
@@ -1934,6 +2140,8 @@ class TradingMonitorService : Service() {
         const val ACTION_START = "com.finnvek.startex.action.START_MONITORING"
         const val ACTION_RECOVER_AUTHENTICATED =
             "com.finnvek.startex.action.RECOVER_MONITORING_AUTHENTICATED"
+        const val ACTION_STOP_AUTHENTICATED =
+            "com.finnvek.startex.action.STOP_MONITORING_AUTHENTICATED"
         const val ACTION_PAUSE = "com.finnvek.startex.action.PAUSE_MONITORING"
         const val ACTION_RESUME = "com.finnvek.startex.action.RESUME_MONITORING"
         const val ACTION_SELL_NOW = "com.finnvek.startex.action.SELL_PAPER_POSITION_NOW"
@@ -1941,6 +2149,7 @@ class TradingMonitorService : Service() {
         const val ACTION_STOP_AFTER_CLOSE = "com.finnvek.startex.action.STOP_AFTER_POSITIONS_CLOSE"
         const val ACTION_STOP = "com.finnvek.startex.action.STOP_MONITORING"
         const val EXTRA_POSITION_ID = "com.finnvek.startex.extra.POSITION_ID"
+        const val EXTRA_SESSION_ID = "com.finnvek.startex.extra.SESSION_ID"
 
         private const val NOTIFICATION_ID = 1001
         private const val REQUEST_OPEN = 100
@@ -1969,8 +2178,6 @@ class TradingMonitorService : Service() {
         private val PAPER_POSITION_STATES = listOf("OPEN", "EXIT_REQUESTED", "EXIT_BLOCKED")
         private val FAILED_TRADE_STATUSES = listOf("FAILED", "PAPER_FAILED", "SUBMISSION_UNCERTAIN")
         private val PUMP_CANDIDATE_SOURCES = setOf("PUMP_PORTAL_NEW_TOKEN", "PUMP_PORTAL_MIGRATION")
-        private val MAXIMUM_SAFE_DEVELOPER_PERCENT = BigDecimal("10")
-        private val MAXIMUM_SAFE_TOP_HOLDER_PERCENT = BigDecimal("30")
         private const val LEGACY_TOKEN_PROGRAM_ID =
             "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
         private val ACTIVE_CANDIDATE_STATES =
@@ -2006,6 +2213,46 @@ class TradingMonitorService : Service() {
             )
     }
 }
+
+internal fun requiresFreshStartPrerequisites(recoverable: BotSessionEntity?): Boolean =
+    recoverable == null || recoverable.stopReason == "PREFLIGHT_FAILED"
+
+internal fun notificationServiceIntent(
+    context: Context,
+    action: String,
+    sessionId: String,
+): Intent {
+    val data = Uri.Builder()
+    data.scheme(NOTIFICATION_ACTION_SCHEME)
+    data.authority(NOTIFICATION_ACTION_AUTHORITY)
+    data.appendPath(NOTIFICATION_ACTION_SESSION_PATH)
+    data.appendPath(sessionId)
+    return Intent(context, TradingMonitorService::class.java)
+        .setAction(action)
+        .setData(data.build())
+}
+
+internal fun acceptsNotificationAction(
+    intent: Intent,
+    currentSessionId: String?,
+    expectedState: Boolean,
+): Boolean {
+    val data = intent.data ?: return true
+    val sessionId =
+        data.pathSegments
+            .takeIf {
+                data.scheme == NOTIFICATION_ACTION_SCHEME &&
+                    data.authority == NOTIFICATION_ACTION_AUTHORITY &&
+                    it.size == 2 &&
+                    it.first() == NOTIFICATION_ACTION_SESSION_PATH
+            }?.last()
+            ?: return false
+    return expectedState && sessionId == currentSessionId
+}
+
+private const val NOTIFICATION_ACTION_SCHEME = "startex"
+private const val NOTIFICATION_ACTION_AUTHORITY = "notification"
+private const val NOTIFICATION_ACTION_SESSION_PATH = "session"
 
 private val ForegroundStatus.titleResource: Int
     get() =

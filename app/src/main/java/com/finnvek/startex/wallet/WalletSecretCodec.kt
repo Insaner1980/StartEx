@@ -25,7 +25,7 @@ object WalletSecretCodec {
             encoder.encode(CharBuffer.wrap(mnemonic), output, true).requireCompleted()
             encoder.flush(output).requireCompleted()
             output.flip()
-            ByteArray(output.remaining()).also { output.get(it) }
+            ByteArray(output.remaining()).also { output[it] }
         } finally {
             mnemonic.fill('0')
             output.array().clearSecret()
@@ -48,7 +48,7 @@ object WalletSecretCodec {
             decoder.decode(ByteBuffer.wrap(encodedMnemonic), output, true).requireCompleted()
             decoder.flush(output).requireCompleted()
             output.flip()
-            CharArray(output.remaining()).also { output.get(it) }
+            CharArray(output.remaining()).also { output[it] }
         } finally {
             encodedMnemonic.clearSecret()
             output.array().fill('0')

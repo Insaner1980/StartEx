@@ -119,11 +119,21 @@ class StartExRepository(
 
     suspend fun deleteWalletSecretEnvelope(walletProfileId: Long = 1): Int = database.walletDao().deleteSecretEnvelope(walletProfileId)
 
-    suspend fun saveProviderCredential(credential: ProviderCredentialEntity) = database.providerCredentialDao().upsert(credential)
+    suspend fun saveProviderCredential(credential: ProviderCredentialEntity) {
+        database.withTransaction {
+            database.providerCredentialDao().upsert(credential)
+            database.providerHealthDao().delete(credential.providerId)
+        }
+    }
 
     suspend fun providerCredential(providerId: String): ProviderCredentialEntity? = database.providerCredentialDao().byProvider(providerId)
 
-    suspend fun deleteProviderCredential(providerId: String): Int = database.providerCredentialDao().delete(providerId)
+    suspend fun deleteProviderCredential(providerId: String): Int =
+        database.withTransaction {
+            val deleted = database.providerCredentialDao().delete(providerId)
+            database.providerHealthDao().delete(providerId)
+            deleted
+        }
 
     suspend fun addTrustedAddress(address: TrustedAddressEntity): Long = database.walletDao().insertTrustedAddress(address)
 
@@ -179,6 +189,33 @@ class StartExRepository(
             stopped.takeIf { updated == 1 }
         }
 
+    suspend fun stopSession(
+        id: String,
+        activeStates: List<String>,
+        stoppedAtMillis: Long,
+        stopReason: String,
+    ): BotSessionEntity? =
+        database.withTransaction {
+            val session = database.botSessionDao().byId(id) ?: return@withTransaction null
+            if (session.status !in activeStates) return@withTransaction null
+            val stopped =
+                session.copy(
+                    status = "STOPPED",
+                    stoppedAtMillis = stoppedAtMillis,
+                    stopReason = stopReason,
+                    lastHeartbeatAtMillis = stoppedAtMillis,
+                )
+            val updated =
+                database.botSessionDao().updateStatus(
+                    id = id,
+                    status = stopped.status,
+                    stoppedAtMillis = stopped.stoppedAtMillis,
+                    stopReason = stopped.stopReason,
+                    lastHeartbeatAtMillis = stopped.lastHeartbeatAtMillis,
+                )
+            stopped.takeIf { updated == 1 }
+        }
+
     suspend fun updateSessionStatus(
         id: String,
         status: String,
@@ -193,6 +230,11 @@ class StartExRepository(
             stopReason = stopReason,
             lastHeartbeatAtMillis = lastHeartbeatAtMillis,
         ) == 1
+
+    suspend fun requestStopAfterClose(
+        sessionId: String,
+        nowMillis: Long,
+    ): Boolean = database.botSessionDao().requestStopAfterClose(sessionId, nowMillis) == 1
 
     suspend fun touchSessionHeartbeat(
         id: String,
@@ -414,7 +456,7 @@ class StartExRepository(
     ) {
         require(position.mode == "PAPER")
         require(position.status == "CLOSED")
-        require(position.closedAtMillis != null)
+        requireNotNull(position.closedAtMillis)
         require(intent.positionId == position.id)
         require(intent.sessionId == position.sessionId)
         require(intent.side == "SELL")
@@ -503,14 +545,16 @@ class StartExRepository(
     private suspend fun loadAnalysisExport(): AnalysisExport =
         database.withTransaction {
             AnalysisExport.fromEntities(
-                sessions = database.botSessionDao().exportAll(),
-                candidates = database.candidateDao().exportAll(),
-                snapshots = database.snapshotDao().exportAll(),
-                decisions = database.decisionDao().exportAll(),
-                positions = database.positionDao().exportAll(),
-                tradeIntents = database.ledgerDao().exportIntents(),
-                transactions = database.ledgerDao().exportTransactions(),
-                fees = database.ledgerDao().exportFees(),
+                AnalysisExportEntities(
+                    sessions = database.botSessionDao().exportAll(),
+                    candidates = database.candidateDao().exportAll(),
+                    snapshots = database.snapshotDao().exportAll(),
+                    decisions = database.decisionDao().exportAll(),
+                    positions = database.positionDao().exportAll(),
+                    tradeIntents = database.ledgerDao().exportIntents(),
+                    transactions = database.ledgerDao().exportTransactions(),
+                    fees = database.ledgerDao().exportFees(),
+                ),
             )
         }
 

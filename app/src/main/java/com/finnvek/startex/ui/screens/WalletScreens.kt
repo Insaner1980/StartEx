@@ -1,5 +1,6 @@
 package com.finnvek.startex.ui.screens
 
+import android.content.ClipData
 import android.content.Intent
 import android.graphics.Bitmap
 import androidx.activity.compose.BackHandler
@@ -9,38 +10,46 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
+import androidx.compose.material.icons.automirrored.outlined.OpenInNew
+import androidx.compose.material.icons.automirrored.outlined.Send
 import androidx.compose.material.icons.outlined.Add
-import androidx.compose.material.icons.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteForever
 import androidx.compose.material.icons.outlined.ErrorOutline
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.LockOpen
-import androidx.compose.material.icons.outlined.OpenInNew
-import androidx.compose.material.icons.outlined.QrCode2
 import androidx.compose.material.icons.outlined.QrCodeScanner
 import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Replay
-import androidx.compose.material.icons.outlined.Send
 import androidx.compose.material.icons.outlined.Share
 import androidx.compose.material.icons.outlined.Visibility
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -48,29 +57,48 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import com.finnvek.startex.R
 import com.finnvek.startex.data.local.TrustedAddressEntity
+import com.finnvek.startex.formatUserNumber
+import com.finnvek.startex.parseSolAmount
 import com.finnvek.startex.ui.PersistedAppState
 import com.finnvek.startex.ui.WalletOverlay
 import com.finnvek.startex.ui.WalletSetupState
@@ -87,12 +115,16 @@ import com.finnvek.startex.ui.theme.StartExBlue
 import com.finnvek.startex.ui.theme.StartExGreen
 import com.finnvek.startex.ui.theme.StartExOutline
 import com.finnvek.startex.ui.theme.StartExRed
+import com.finnvek.startex.wallet.MAX_MNEMONIC_INPUT_CHAR_COUNT
 import com.finnvek.startex.wallet.ManualTransferStatus
+import com.finnvek.startex.wallet.SolanaAddressValidator
+import com.google.mlkit.common.MlKitException
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
 import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
 import com.google.zxing.BarcodeFormat
 import com.google.zxing.qrcode.QRCodeWriter
+import kotlinx.coroutines.launch
 import java.math.BigDecimal
 import java.math.RoundingMode
 
@@ -105,7 +137,10 @@ fun WalletFlowScreen(
     onSave: (Boolean) -> Unit,
     onCancel: () -> Unit,
 ) {
-    BackHandler(onBack = onCancel)
+    BackHandler(
+        enabled = state !is WalletSetupState.Saving,
+        onBack = onCancel,
+    )
     when (state) {
         WalletSetupState.Closed -> {
             Unit
@@ -120,10 +155,7 @@ fun WalletFlowScreen(
         is WalletSetupState.Mnemonic -> {
             val words =
                 remember(state.phrase) {
-                    state.phrase
-                        .concatToString()
-                        .split(Regex("\\s+"))
-                        .filter(String::isNotBlank)
+                    state.phrase.toDisplayWords()
                 }
             MnemonicBackupScreen(
                 words = words,
@@ -160,6 +192,7 @@ fun WalletFlowScreen(
 }
 
 @Composable
+@Suppress("LongParameterList")
 fun WalletOverlayScreen(
     overlay: WalletOverlay,
     state: PersistedAppState,
@@ -173,6 +206,7 @@ fun WalletOverlayScreen(
     onAddTrustedAddress: (String, String, Boolean) -> Unit,
     onDeleteTrustedAddress: (Long, String) -> Unit,
     onUnlockTrustedAddress: (Long, String) -> Unit,
+    qrBitmapFactory: (String) -> Bitmap? = ::createQrBitmap,
 ) {
     BackHandler {
         if (transferState != WalletTransferState.Submitting) onDismiss()
@@ -183,7 +217,7 @@ fun WalletOverlayScreen(
         }
 
         WalletOverlay.Receive -> {
-            ReceiveScreen(state, onDismiss, onRefreshBalance)
+            ReceiveScreen(state, onDismiss, onRefreshBalance, qrBitmapFactory)
         }
 
         WalletOverlay.Send -> {
@@ -211,10 +245,7 @@ fun WalletOverlayScreen(
         is WalletOverlay.RevealedMnemonic -> {
             val words =
                 remember(overlay.phrase) {
-                    overlay.phrase
-                        .concatToString()
-                        .split(Regex("\\s+"))
-                        .filter(String::isNotBlank)
+                    overlay.phrase.toDisplayWords()
                 }
             RevealedMnemonicScreen(
                 words = words,
@@ -257,7 +288,12 @@ private fun MnemonicBackupScreen(
                             shape = RoundedCornerShape(8.dp),
                         ) {
                             Text(
-                                text = "${indexedWord.index + 1}  ${indexedWord.value}",
+                                text =
+                                    stringResource(
+                                        R.string.backup_word_list_item,
+                                        indexedWord.index + 1,
+                                        indexedWord.value,
+                                    ),
                                 modifier = Modifier.padding(10.dp),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontFamily = FontFamily.Monospace,
@@ -271,8 +307,18 @@ private fun MnemonicBackupScreen(
         Spacer(modifier = Modifier.height(14.dp))
         AddressText(publicAddress, abbreviated = false)
         Spacer(modifier = Modifier.height(14.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(checked = savedOffline, onCheckedChange = { savedOffline = it })
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = savedOffline,
+                        role = Role.Checkbox,
+                        onValueChange = { savedOffline = it },
+                    ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = savedOffline, onCheckedChange = null)
             Text(
                 text = stringResource(R.string.backup_offline_confirmation),
                 modifier = Modifier.weight(1f),
@@ -300,6 +346,18 @@ private fun BackupChallengeScreen(
     onCancel: () -> Unit,
 ) {
     val answers = remember(state.wordNumbers) { mutableStateMapOf<Int, String>() }
+    val focusManager = LocalFocusManager.current
+    val firstFieldFocusRequester = remember(state.wordNumbers) { FocusRequester() }
+    val answersComplete = state.wordNumbers.all { answers[it].orEmpty().isNotBlank() }
+    val submitAnswers = {
+        if (answersComplete) {
+            focusManager.clearFocus()
+            onVerify(answers.toMap())
+        }
+    }
+    LaunchedEffect(state.error) {
+        if (state.error != null) firstFieldFocusRequester.requestFocus()
+    }
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.backup_quiz_title), onCancel)
         Spacer(modifier = Modifier.height(10.dp))
@@ -309,14 +367,17 @@ private fun BackupChallengeScreen(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Spacer(modifier = Modifier.height(18.dp))
-        state.wordNumbers.forEach { number ->
+        state.wordNumbers.forEachIndexed { index, number ->
             OutlinedTextField(
                 value = answers[number].orEmpty(),
                 onValueChange = { answers[number] = it.trim().lowercase() },
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
+                        .padding(bottom = 12.dp)
+                        .then(
+                            if (index == 0) Modifier.focusRequester(firstFieldFocusRequester) else Modifier,
+                        ),
                 label = { Text(stringResource(R.string.backup_word_number, number)) },
                 singleLine = true,
                 isError = state.error != null,
@@ -324,7 +385,14 @@ private fun BackupChallengeScreen(
                     KeyboardOptions(
                         autoCorrectEnabled = false,
                         keyboardType = KeyboardType.Password,
+                        imeAction = if (index == state.wordNumbers.lastIndex) ImeAction.Done else ImeAction.Next,
                     ),
+                keyboardActions =
+                    KeyboardActions(
+                        onNext = { focusManager.moveFocus(FocusDirection.Next) },
+                        onDone = { submitAnswers() },
+                    ),
+                visualTransformation = PasswordVisualTransformation(),
             )
         }
         state.error?.let {
@@ -336,8 +404,8 @@ private fun BackupChallengeScreen(
         }
         Spacer(modifier = Modifier.height(14.dp))
         Button(
-            onClick = { onVerify(answers.toMap()) },
-            enabled = state.wordNumbers.all { answers[it].orEmpty().isNotBlank() },
+            onClick = submitAnswers,
+            enabled = answersComplete,
             modifier =
                 Modifier
                     .fillMaxWidth()
@@ -355,7 +423,21 @@ private fun RestoreWalletScreen(
     onCancel: () -> Unit,
 ) {
     var phrase by remember { mutableStateOf("") }
-    var visible by rememberSaveable { mutableStateOf(false) }
+    var visible by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    val phraseFocusRequester = remember { FocusRequester() }
+    val submitPhrase = {
+        if (phrase.isNotBlank()) {
+            val secret = phrase.trim().toCharArray()
+            phrase = ""
+            visible = false
+            focusManager.clearFocus()
+            onRestore(secret)
+        }
+    }
+    LaunchedEffect(state.error) {
+        if (state.error != null) phraseFocusRequester.requestFocus()
+    }
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.restore_wallet_title), onCancel)
         Spacer(modifier = Modifier.height(10.dp))
@@ -367,8 +449,8 @@ private fun RestoreWalletScreen(
         Spacer(modifier = Modifier.height(16.dp))
         OutlinedTextField(
             value = phrase,
-            onValueChange = { phrase = it },
-            modifier = Modifier.fillMaxWidth(),
+            onValueChange = { phrase = it.take(MAX_MNEMONIC_INPUT_CHAR_COUNT + 1) },
+            modifier = Modifier.fillMaxWidth().focusRequester(phraseFocusRequester),
             label = { Text(stringResource(R.string.recovery_phrase)) },
             supportingText = {
                 Text(
@@ -393,17 +475,15 @@ private fun RestoreWalletScreen(
                 KeyboardOptions(
                     autoCorrectEnabled = false,
                     keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
                 ),
+            keyboardActions = KeyboardActions(onDone = { submitPhrase() }),
             minLines = 4,
             isError = state.error != null,
         )
         Spacer(modifier = Modifier.height(18.dp))
         Button(
-            onClick = {
-                val secret = phrase.trim().toCharArray()
-                phrase = ""
-                onRestore(secret)
-            },
+            onClick = submitPhrase,
             enabled = phrase.isNotBlank(),
             modifier =
                 Modifier
@@ -442,10 +522,20 @@ private fun WalletReviewScreen(
             )
         }
         Spacer(modifier = Modifier.height(14.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .toggleable(
+                        value = dedicatedWalletConfirmed,
+                        role = Role.Checkbox,
+                        onValueChange = { dedicatedWalletConfirmed = it },
+                    ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             Checkbox(
                 checked = dedicatedWalletConfirmed,
-                onCheckedChange = { dedicatedWalletConfirmed = it },
+                onCheckedChange = null,
             )
             Text(
                 text = stringResource(R.string.wallet_dedicated_confirmation),
@@ -454,10 +544,20 @@ private fun WalletReviewScreen(
             )
         }
         if (state.restored) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = restoredBackupConfirmed,
+                            role = Role.Checkbox,
+                            onValueChange = { restoredBackupConfirmed = it },
+                        ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
                 Checkbox(
                     checked = restoredBackupConfirmed,
-                    onCheckedChange = { restoredBackupConfirmed = it },
+                    onCheckedChange = null,
                 )
                 Text(
                     text = stringResource(R.string.restore_backup_confirmation),
@@ -520,37 +620,56 @@ private fun ReceiveScreen(
     state: PersistedAppState,
     onBack: () -> Unit,
     onRefreshBalance: () -> Unit,
+    qrBitmapFactory: (String) -> Bitmap?,
 ) {
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
-    val address = state.walletAddress.orEmpty()
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
+    val address = remember(state.walletAddress) { receiveAddressOrNull(state.walletAddress) }
+    var addressCopied by rememberSaveable(address) { mutableStateOf(false) }
     val shareAddressTitle = stringResource(R.string.share_address)
-    val qr = remember(address) { createQrBitmap(address) }
+    val qr = remember(address, qrBitmapFactory) { address?.let(qrBitmapFactory) }
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.receive_sol), onBack)
         Spacer(modifier = Modifier.height(14.dp))
         Surface(
-            modifier = Modifier.align(Alignment.CenterHorizontally),
+            modifier =
+                Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .widthIn(max = 240.dp)
+                    .fillMaxWidth()
+                    .aspectRatio(1f),
             color = Color.White,
             shape = RoundedCornerShape(12.dp),
         ) {
             if (qr == null) {
-                Icon(
-                    imageVector = Icons.Outlined.QrCode2,
-                    contentDescription = stringResource(R.string.qr_unavailable),
+                Column(
                     modifier =
                         Modifier
-                            .size(240.dp)
+                            .fillMaxSize()
                             .padding(32.dp),
-                    tint = Color.Black,
-                )
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ErrorOutline,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = Color.Black,
+                    )
+                    Text(
+                        text = stringResource(R.string.qr_unavailable),
+                        color = Color.Black,
+                        modifier = Modifier.padding(top = 12.dp),
+                    )
+                }
             } else {
                 Image(
                     bitmap = qr.asImageBitmap(),
                     contentDescription = stringResource(R.string.wallet_address_qr),
                     modifier =
                         Modifier
-                            .size(240.dp)
+                            .fillMaxSize()
                             .padding(12.dp),
                 )
             }
@@ -562,7 +681,15 @@ private fun ReceiveScreen(
                 subtitle = stringResource(R.string.network_mainnet),
             )
             Spacer(modifier = Modifier.height(10.dp))
-            AddressText(address, abbreviated = false)
+            if (address == null) {
+                Text(
+                    text = stringResource(R.string.receive_address_unavailable),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = StartExAmber,
+                )
+            } else {
+                AddressText(address, abbreviated = false)
+            }
         }
         Spacer(modifier = Modifier.height(12.dp))
         SectionCard {
@@ -576,7 +703,7 @@ private fun ReceiveScreen(
                     SectionHeading(stringResource(R.string.wallet_balance))
                     Text(
                         text =
-                            state.walletBalanceLamports?.let(::formatLamports)
+                            state.walletBalanceLamports?.let { formatLamports(it) }
                                 ?: stringResource(R.string.balance_unavailable),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
@@ -586,23 +713,32 @@ private fun ReceiveScreen(
                             text =
                                 stringResource(
                                     R.string.eur_balance_value,
-                                    value.setScale(2, RoundingMode.HALF_UP).toPlainString(),
+                                    formatUserNumber(
+                                        value = value.setScale(2, RoundingMode.HALF_UP),
+                                        maximumFractionDigits = 2,
+                                        locale = LocalConfiguration.current.locales[0],
+                                    ),
                                 ),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
                 }
+                val refreshBalanceDescription =
+                    stringResource(
+                        if (state.walletBalanceLoading) R.string.balance_loading else R.string.refresh_balance,
+                    )
                 IconButton(
                     onClick = onRefreshBalance,
-                    enabled = !state.walletBalanceLoading,
+                    enabled = address != null && !state.walletBalanceLoading,
+                    modifier = Modifier.semantics { contentDescription = refreshBalanceDescription },
                 ) {
                     if (state.walletBalanceLoading) {
                         CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
                     } else {
                         Icon(
                             imageVector = Icons.Outlined.Refresh,
-                            contentDescription = stringResource(R.string.refresh_balance),
+                            contentDescription = null,
                         )
                     }
                 }
@@ -638,7 +774,15 @@ private fun ReceiveScreen(
         Spacer(modifier = Modifier.height(16.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             OutlinedButton(
-                onClick = { clipboard.setText(AnnotatedString(address)) },
+                onClick = {
+                    address?.let { shareableAddress ->
+                        clipboardScope.launch {
+                            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, shareableAddress)))
+                            addressCopied = true
+                        }
+                    }
+                },
+                enabled = address != null,
                 modifier =
                     Modifier
                         .weight(1f)
@@ -649,16 +793,19 @@ private fun ReceiveScreen(
             }
             OutlinedButton(
                 onClick = {
-                    context.startActivity(
-                        Intent.createChooser(
-                            Intent(Intent.ACTION_SEND).apply {
-                                type = "text/plain"
-                                putExtra(Intent.EXTRA_TEXT, address)
-                            },
-                            shareAddressTitle,
-                        ),
-                    )
+                    address?.let { shareableAddress ->
+                        context.startActivity(
+                            Intent.createChooser(
+                                Intent(Intent.ACTION_SEND).apply {
+                                    type = "text/plain"
+                                    putExtra(Intent.EXTRA_TEXT, shareableAddress)
+                                },
+                                shareAddressTitle,
+                            ),
+                        )
+                    }
                 },
+                enabled = address != null,
                 modifier =
                     Modifier
                         .weight(1f)
@@ -667,6 +814,17 @@ private fun ReceiveScreen(
                 Icon(Icons.Outlined.Share, contentDescription = null)
                 Text(stringResource(R.string.share), Modifier.padding(start = 8.dp))
             }
+        }
+        if (addressCopied) {
+            Text(
+                text = stringResource(R.string.address_copied),
+                style = MaterialTheme.typography.bodySmall,
+                color = StartExGreen,
+                modifier =
+                    Modifier
+                        .padding(top = 8.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
+            )
         }
     }
 }
@@ -798,6 +956,14 @@ private fun SendInputScreen(
         appState.monitorState == com.finnvek.startex.ui.MonitorState.Stopped ||
             appState.monitorState == com.finnvek.startex.ui.MonitorState.Paused
     val noOpenPositions = appState.openPositions.isEmpty()
+    val focusManager = LocalFocusManager.current
+    val canPrepare = selected != null && amountIsValid && monitoringAllowsTransfer && noOpenPositions
+    val prepareTransfer = prepareTransfer@{
+        val selectedAddress = selected ?: return@prepareTransfer
+        if (!amountIsValid || !monitoringAllowsTransfer || !noOpenPositions) return@prepareTransfer
+        focusManager.clearFocus()
+        onPrepare(selectedAddress.id, amount)
+    }
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.send_sol), onBack)
         Spacer(modifier = Modifier.height(12.dp))
@@ -821,12 +987,17 @@ private fun SendInputScreen(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 56.dp),
+                                .heightIn(min = 56.dp)
+                                .selectable(
+                                    selected = selectedId == address.id,
+                                    role = Role.RadioButton,
+                                    onClick = { selectedId = address.id },
+                                ),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         RadioButton(
                             selected = selectedId == address.id,
-                            onClick = { selectedId = address.id },
+                            onClick = null,
                         )
                         Column(modifier = Modifier.weight(1f)) {
                             Text(address.label, style = MaterialTheme.typography.bodyLarge)
@@ -846,7 +1017,9 @@ private fun SendInputScreen(
             Spacer(modifier = Modifier.height(14.dp))
             OutlinedTextField(
                 value = amount,
-                onValueChange = { amount = it.filter { character -> character.isDigit() || character == '.' } },
+                onValueChange = {
+                    amount = it.filter { character -> character.isDigit() || character == '.' || character == ',' }
+                },
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(stringResource(R.string.amount_sol)) },
                 supportingText = {
@@ -860,6 +1033,13 @@ private fun SendInputScreen(
                 },
                 isError = amount.isNotBlank() && !amountIsValid,
                 singleLine = true,
+                textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.ContentOrLtr),
+                keyboardOptions =
+                    KeyboardOptions(
+                        keyboardType = KeyboardType.Decimal,
+                        imeAction = ImeAction.Done,
+                    ),
+                keyboardActions = KeyboardActions(onDone = { prepareTransfer() }),
             )
             Spacer(modifier = Modifier.height(16.dp))
             if (!monitoringAllowsTransfer || !noOpenPositions) {
@@ -878,8 +1058,8 @@ private fun SendInputScreen(
                 )
             }
             Button(
-                onClick = { selected?.let { onPrepare(it.id, amount) } },
-                enabled = selected != null && amountIsValid && monitoringAllowsTransfer && noOpenPositions,
+                onClick = prepareTransfer,
+                enabled = canPrepare,
                 modifier =
                     Modifier
                         .fillMaxWidth()
@@ -903,6 +1083,13 @@ private fun SendReviewScreen(
         !review.requiresAddressVerification ||
             finalCharacters == review.destinationAddress.takeLast(4)
     val totalDeduction = Math.addExact(review.amountLamports, review.estimatedFeeLamports)
+    val focusManager = LocalFocusManager.current
+    val submitTransfer = {
+        if (matches) {
+            focusManager.clearFocus()
+            onSubmit(finalCharacters)
+        }
+    }
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.review_transaction), onBack)
         Spacer(modifier = Modifier.height(12.dp))
@@ -945,6 +1132,14 @@ private fun SendReviewScreen(
                 },
                 isError = finalCharacters.isNotEmpty() && !matches,
                 singleLine = true,
+                textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+                keyboardOptions =
+                    KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Done,
+                    ),
+                keyboardActions = KeyboardActions(onDone = { submitTransfer() }),
             )
         } else {
             Spacer(modifier = Modifier.height(14.dp))
@@ -961,14 +1156,14 @@ private fun SendReviewScreen(
             modifier = Modifier.padding(vertical = 14.dp),
         )
         Button(
-            onClick = { onSubmit(finalCharacters) },
+            onClick = submitTransfer,
             enabled = matches,
             modifier =
                 Modifier
                     .fillMaxWidth()
                     .heightIn(min = 48.dp),
         ) {
-            Icon(Icons.Outlined.Send, contentDescription = null)
+            Icon(Icons.AutoMirrored.Outlined.Send, contentDescription = null)
             Text(stringResource(R.string.authenticate_sign_send), Modifier.padding(start = 8.dp))
         }
         OutlinedButton(
@@ -1006,7 +1201,10 @@ private fun TransferWorkingScreen(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(top = 18.dp),
+                modifier =
+                    Modifier
+                        .padding(top = 18.dp)
+                        .semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
     }
@@ -1021,7 +1219,8 @@ private fun TransferResultScreen(
     onDone: () -> Unit,
 ) {
     val context = LocalContext.current
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
+    val clipboardScope = rememberCoroutineScope()
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.transfer_status), onDone)
         Spacer(modifier = Modifier.height(14.dp))
@@ -1050,6 +1249,7 @@ private fun TransferResultScreen(
             Spacer(modifier = Modifier.height(12.dp))
             SectionHeading(
                 title = stringResource(titleMessage),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 subtitle = stringResource(detailMessage),
             )
             Spacer(modifier = Modifier.height(14.dp))
@@ -1057,7 +1257,11 @@ private fun TransferResultScreen(
             Spacer(modifier = Modifier.height(14.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 OutlinedButton(
-                    onClick = { clipboard.setText(AnnotatedString(signature)) },
+                    onClick = {
+                        clipboardScope.launch {
+                            clipboard.setClipEntry(ClipEntry(ClipData.newPlainText(null, signature)))
+                        }
+                    },
                     modifier =
                         Modifier
                             .weight(1f)
@@ -1077,7 +1281,7 @@ private fun TransferResultScreen(
                             .weight(1f)
                             .heightIn(min = 48.dp),
                 ) {
-                    Icon(Icons.Outlined.OpenInNew, contentDescription = null)
+                    Icon(Icons.AutoMirrored.Outlined.OpenInNew, contentDescription = null)
                     Text(stringResource(R.string.open_explorer), Modifier.padding(start = 8.dp))
                 }
             }
@@ -1111,7 +1315,7 @@ private fun TransferFailureScreen(
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.transfer_failed_title), onBack)
         Spacer(modifier = Modifier.height(16.dp))
-        SectionCard {
+        SectionCard(modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
             Icon(
                 imageVector = Icons.Outlined.ErrorOutline,
                 contentDescription = null,
@@ -1166,8 +1370,15 @@ private fun TrustedAddressesScreen(
     var label by rememberSaveable { mutableStateOf("") }
     var address by rememberSaveable { mutableStateOf("") }
     var locked by rememberSaveable { mutableStateOf(true) }
-    var scanFailed by remember { mutableStateOf(false) }
+    var scanError by remember { mutableStateOf<Int?>(null) }
+    var addressError by remember { mutableStateOf(false) }
     var confirmation by remember { mutableStateOf<TrustedAddressConfirmation?>(null) }
+    val focusManager = LocalFocusManager.current
+    val addressFocusRequester = remember { FocusRequester() }
+    val addressValidator = remember { SolanaAddressValidator() }
+    LaunchedEffect(scanError, addressError) {
+        if (scanError != null || addressError) addressFocusRequester.requestFocus()
+    }
     ScreenColumn {
         SensitiveHeader(stringResource(R.string.trusted_addresses), onBack)
         Spacer(modifier = Modifier.height(10.dp))
@@ -1184,35 +1395,65 @@ private fun TrustedAddressesScreen(
                 body = stringResource(R.string.no_trusted_addresses_body),
             )
         } else {
-            SectionCard {
+            SectionCard(modifier = Modifier.focusRestorer()) {
                 addresses.forEachIndexed { index, item ->
-                    if (index > 0) HorizontalDivider(color = StartExOutline)
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .padding(vertical = 12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(item.label, style = MaterialTheme.typography.bodyLarge)
-                            AddressText(item.address)
-                        }
-                        if (item.isLocked) {
-                            IconButton(onClick = { confirmation = TrustedAddressConfirmation.Unlock(item) }) {
-                                Icon(
-                                    imageVector = Icons.Outlined.LockOpen,
-                                    contentDescription = stringResource(R.string.unlock_trusted_address),
-                                    tint = StartExGreen,
+                    key(item.id) {
+                        if (index > 0) HorizontalDivider(color = StartExOutline)
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(item.label, style = MaterialTheme.typography.bodyLarge)
+                                AddressText(item.address, abbreviated = false)
+                                Text(
+                                    text =
+                                        stringResource(
+                                            if (item.isLocked) {
+                                                R.string.trusted_address_locked_state
+                                            } else {
+                                                R.string.trusted_address_unlocked_state
+                                            },
+                                        ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text =
+                                        stringResource(
+                                            if (item.firstTransferVerifiedAtMillis == null) {
+                                                R.string.trusted_address_first_transfer_pending
+                                            } else {
+                                                R.string.trusted_address_first_transfer_verified
+                                            },
+                                        ),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
                             }
-                        }
-                        IconButton(onClick = { confirmation = TrustedAddressConfirmation.Delete(item) }) {
-                            Icon(
-                                imageVector = Icons.Outlined.DeleteForever,
-                                contentDescription = stringResource(R.string.delete_trusted_address),
-                                tint = StartExRed,
-                            )
+                            if (item.isLocked) {
+                                IconButton(
+                                    onClick = { confirmation = TrustedAddressConfirmation.Unlock(item) },
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Outlined.LockOpen,
+                                        contentDescription = stringResource(R.string.unlock_trusted_address),
+                                        tint = StartExGreen,
+                                    )
+                                }
+                            }
+                            IconButton(
+                                onClick = { confirmation = TrustedAddressConfirmation.Delete(item) },
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.DeleteForever,
+                                    contentDescription = stringResource(R.string.delete_trusted_address),
+                                    tint = StartExRed,
+                                )
+                            }
                         }
                     }
                 }
@@ -1228,28 +1469,59 @@ private fun TrustedAddressesScreen(
                 modifier = Modifier.fillMaxWidth(),
                 label = { Text(stringResource(R.string.address_label)) },
                 singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
+                keyboardActions =
+                    KeyboardActions(onNext = { focusManager.moveFocus(FocusDirection.Next) }),
             )
             Spacer(modifier = Modifier.height(10.dp))
             OutlinedTextField(
                 value = address,
-                onValueChange = { address = it.trim() },
-                modifier = Modifier.fillMaxWidth(),
+                onValueChange = {
+                    address = it.trim()
+                    addressError = false
+                    scanError = null
+                },
+                modifier = Modifier.fillMaxWidth().focusRequester(addressFocusRequester),
                 label = { Text(stringResource(R.string.solana_address)) },
                 minLines = 2,
+                isError = addressError,
+                supportingText =
+                    if (addressError) {
+                        { Text(stringResource(R.string.trusted_address_invalid)) }
+                    } else {
+                        null
+                    },
+                textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+                keyboardOptions =
+                    KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Text,
+                        imeAction = ImeAction.Done,
+                    ),
+                keyboardActions = KeyboardActions(onDone = { focusManager.clearFocus() }),
             )
             OutlinedButton(
                 onClick = {
-                    scanFailed = false
+                    scanError = null
                     scanner
                         .startScan()
                         .addOnSuccessListener { barcode ->
                             val scanned = barcode.rawValue?.toTrustedAddressValue()
                             if (scanned == null) {
-                                scanFailed = true
+                                scanError = R.string.address_scan_failed
                             } else {
                                 address = scanned
+                                addressError = false
                             }
-                        }.addOnFailureListener { scanFailed = true }
+                        }.addOnCanceledListener { scanError = null }
+                        .addOnFailureListener { error ->
+                            scanError =
+                                if (error.isCodeScannerCancellation()) {
+                                    null
+                                } else {
+                                    R.string.address_scanner_unavailable
+                                }
+                        }
                 },
                 modifier =
                     Modifier
@@ -1260,16 +1532,29 @@ private fun TrustedAddressesScreen(
                 Icon(Icons.Outlined.QrCodeScanner, contentDescription = null)
                 Text(stringResource(R.string.scan_address_qr), Modifier.padding(start = 8.dp))
             }
-            if (scanFailed) {
+            scanError?.let { message ->
                 Text(
-                    text = stringResource(R.string.address_scan_failed),
+                    text = stringResource(message),
                     style = MaterialTheme.typography.bodySmall,
                     color = StartExAmber,
-                    modifier = Modifier.padding(top = 8.dp),
+                    modifier =
+                        Modifier
+                            .padding(top = 8.dp)
+                            .semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = locked, onCheckedChange = { locked = it })
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = locked,
+                            role = Role.Checkbox,
+                            onValueChange = { locked = it },
+                        ),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Checkbox(checked = locked, onCheckedChange = null)
                 Text(stringResource(R.string.lock_trusted_address), Modifier.weight(1f))
             }
             Text(
@@ -1277,12 +1562,23 @@ private fun TrustedAddressesScreen(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            Text(
+                text = stringResource(R.string.trusted_address_save_requirements),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Spacer(modifier = Modifier.height(12.dp))
             Button(
                 onClick = {
-                    onAdd(label, address, locked)
-                    label = ""
-                    address = ""
+                    val normalizedAddress = addressValidator.normalize(address)
+                    if (normalizedAddress == null) {
+                        addressError = true
+                    } else {
+                        onAdd(label, normalizedAddress, locked)
+                        label = ""
+                        address = ""
+                        locked = true
+                    }
                 },
                 enabled = label.isNotBlank() && address.isNotBlank(),
                 modifier =
@@ -1337,6 +1633,14 @@ private fun TrustedAddressConfirmationDialog(
             action !is TrustedAddressConfirmation.Delete ||
                 action.address.isLocked || deletionAcknowledged
         )
+    val focusManager = LocalFocusManager.current
+    val confirmationFocusRequester = remember(action) { FocusRequester() }
+    val confirm = {
+        if (canConfirm) {
+            focusManager.clearFocus()
+            onConfirm(finalCharacters)
+        }
+    }
     androidx.compose.material3.AlertDialog(
         onDismissRequest = onDismiss,
         title = {
@@ -1359,7 +1663,10 @@ private fun TrustedAddressConfirmationDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
                 Text(
                     text =
                         stringResource(
@@ -1372,18 +1679,51 @@ private fun TrustedAddressConfirmationDialog(
                 )
                 AddressText(action.address.address, abbreviated = false)
                 if (needsCharacters) {
+                    LaunchedEffect(action) {
+                        confirmationFocusRequester.requestFocus()
+                    }
                     OutlinedTextField(
                         value = finalCharacters,
                         onValueChange = { finalCharacters = it.take(4) },
+                        modifier = Modifier.focusRequester(confirmationFocusRequester),
                         label = { Text(stringResource(R.string.confirm_last_four)) },
                         isError = finalCharacters.isNotEmpty() && !charactersMatch,
+                        supportingText = {
+                            Text(
+                                stringResource(
+                                    if (finalCharacters.isEmpty() || charactersMatch) {
+                                        R.string.confirm_last_four_help
+                                    } else {
+                                        R.string.confirm_last_four_mismatch
+                                    },
+                                ),
+                            )
+                        },
                         singleLine = true,
+                        textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.Ltr),
+                        keyboardOptions =
+                            KeyboardOptions(
+                                autoCorrectEnabled = false,
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Done,
+                            ),
+                        keyboardActions = KeyboardActions(onDone = { confirm() }),
                     )
                 } else {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .toggleable(
+                                    value = deletionAcknowledged,
+                                    role = Role.Checkbox,
+                                    onValueChange = { deletionAcknowledged = it },
+                                ),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
                         Checkbox(
                             checked = deletionAcknowledged,
-                            onCheckedChange = { deletionAcknowledged = it },
+                            onCheckedChange = null,
                         )
                         Text(
                             text = stringResource(R.string.confirm_address_delete),
@@ -1399,16 +1739,24 @@ private fun TrustedAddressConfirmationDialog(
             }
         },
         confirmButton = {
-            androidx.compose.material3.TextButton(
-                onClick = { onConfirm(finalCharacters) },
-                enabled = canConfirm,
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(stringResource(R.string.authenticate_and_continue), color = StartExRed)
-            }
-        },
-        dismissButton = {
-            androidx.compose.material3.TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.cancel))
+                androidx.compose.material3.TextButton(
+                    onClick = confirm,
+                    enabled = canConfirm,
+                    colors = ButtonDefaults.textButtonColors(contentColor = StartExRed),
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text(stringResource(R.string.authenticate_and_continue))
+                }
+                androidx.compose.material3.TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.heightIn(min = 48.dp),
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
             }
         },
     )
@@ -1431,7 +1779,7 @@ private fun RevealedMnemonicScreen(
         SectionCard {
             words.forEachIndexed { index, word ->
                 Text(
-                    text = "${index + 1}.  $word",
+                    text = stringResource(R.string.backup_word_list_item, index + 1, word),
                     modifier = Modifier.padding(vertical = 5.dp),
                     style = MaterialTheme.typography.bodyLarge,
                     fontFamily = FontFamily.Monospace,
@@ -1461,13 +1809,21 @@ private fun SensitiveHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         IconButton(onClick = onBack) {
-            Icon(Icons.Outlined.ArrowBack, contentDescription = stringResource(R.string.back))
+            Icon(
+                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                contentDescription = stringResource(R.string.back),
+                tint = MaterialTheme.colorScheme.onBackground,
+            )
         }
         Text(
             text = title,
             style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.padding(start = 6.dp),
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier =
+                Modifier
+                    .padding(start = 6.dp)
+                    .semantics { heading() },
         )
     }
 }
@@ -1497,30 +1853,53 @@ private fun createQrBitmap(value: String): Bitmap? =
         Bitmap.createBitmap(pixels, QR_SIZE, QR_SIZE, Bitmap.Config.ARGB_8888)
     }.getOrNull()
 
-private fun String.toSolAmountOrNull(): BigDecimal? =
-    runCatching {
-        trim().takeIf(String::isNotEmpty)?.let(::BigDecimal)?.takeIf {
-            it > BigDecimal.ZERO && it.scale() <= SOL_DECIMAL_PLACES
-        }
-    }.getOrNull()
+internal fun receiveAddressOrNull(address: String?): String? = address?.takeIf { SolanaAddressValidator().normalize(it) == it }
 
-private fun String.toTrustedAddressValue(): String? {
+private fun String.toSolAmountOrNull(): BigDecimal? = parseSolAmount(this)
+
+internal fun String.toTrustedAddressValue(): String? {
     val value =
         trim()
             .removePrefix("solana:")
             .substringBefore('?')
             .trim()
-    return value.takeIf(String::isNotEmpty)
+    return SolanaAddressValidator().normalize(value)
 }
 
+private fun Exception.isCodeScannerCancellation(): Boolean = this is MlKitException && isCodeScannerCancellation(errorCode)
+
+internal fun isCodeScannerCancellation(errorCode: Int): Boolean = errorCode == MlKitException.CODE_SCANNER_CANCELLED
+
+private fun CharArray.toDisplayWords(): List<String> =
+    buildList {
+        var start = -1
+        this@toDisplayWords.forEachIndexed { index, character ->
+            if (character.isWhitespace()) {
+                if (start >= 0) {
+                    add(this@toDisplayWords.concatToString(start, index))
+                    start = -1
+                }
+            } else if (start < 0) {
+                start = index
+            }
+        }
+        if (start >= 0) add(this@toDisplayWords.concatToString(start, this@toDisplayWords.size))
+    }
+
+@Composable
 private fun formatLamports(lamports: Long): String {
     val sol =
         BigDecimal
             .valueOf(lamports)
             .divide(BigDecimal.valueOf(LAMPORTS_PER_SOL), SOL_DECIMAL_PLACES, RoundingMode.DOWN)
             .stripTrailingZeros()
-            .toPlainString()
-    return "$sol SOL"
+    val value =
+        formatUserNumber(
+            value = sol,
+            maximumFractionDigits = SOL_DECIMAL_PLACES,
+            locale = LocalConfiguration.current.locales[0],
+        )
+    return stringResource(R.string.sol_balance_value, value)
 }
 
 private const val QR_SIZE = 512

@@ -9,13 +9,15 @@ import com.finnvek.startex.ui.screens.HistoryDateFilter
 import com.finnvek.startex.ui.screens.HistoryModeFilter
 import com.finnvek.startex.ui.screens.configurationInputs
 import com.finnvek.startex.ui.screens.filterTradeHistory
-import com.finnvek.startex.ui.screens.summarizeDailyPerformance
+import com.finnvek.startex.ui.screens.millisUntilNextUtcDay
+import com.finnvek.startex.ui.screens.summarizeTradeHistory
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.math.BigInteger
+import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
@@ -52,48 +54,151 @@ class HistoryAndConfigurationUiTest {
     }
 
     @Test
-    fun performanceSummaryAddsPersistedRowsExactly() {
+    fun historyUsesUtcDayBoundariesAcrossADaylightSavingChange() {
+        val now = Instant.parse("2026-03-29T00:30:00Z").toEpochMilli()
+        val today = LocalDate.of(2026, 3, 29)
+        val rows =
+            listOf(
+                trade("utc-today", DailyPerformanceEntity.MODE_PAPER, today).copy(createdAtMillis = now),
+                trade("utc-yesterday", DailyPerformanceEntity.MODE_PAPER, today.minusDays(1)).copy(
+                    createdAtMillis = Instant.parse("2026-03-28T23:59:59.999Z").toEpochMilli(),
+                ),
+            )
+
+        assertEquals(
+            listOf("utc-today"),
+            filterTradeHistory(
+                rows,
+                HistoryModeFilter.All,
+                HistoryDateFilter.Today,
+                now,
+            ).map(TradeExportRow::intentId),
+        )
+        assertEquals(84_600_000L, millisUntilNextUtcDay(now))
+    }
+
+    @Test
+    fun performanceSummaryUsesTheSameFilteredTradeRows() {
         val today = LocalDate.of(2026, 8, 9)
         val now = today.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
-        val summary =
-            summarizeDailyPerformance(
-                rows =
-                    listOf(
-                        performance(
-                            today,
-                            DailyPerformanceEntity.MODE_PAPER,
-                            net = 20,
-                            fees = 3,
-                            wins = 2,
-                            losses = 1,
-                        ),
-                        performance(
-                            today.minusDays(1),
-                            DailyPerformanceEntity.MODE_PAPER,
-                            net = -5,
-                            fees = 2,
-                            wins = 0,
-                            losses = 1,
-                        ),
-                        performance(
-                            today,
-                            DailyPerformanceEntity.MODE_LIVE,
-                            net = 100,
-                            fees = 9,
-                            wins = 9,
-                            losses = 0,
-                        ),
-                    ),
-                modeFilter = HistoryModeFilter.Paper,
-                dateFilter = HistoryDateFilter.SevenDays,
-                nowMillis = now,
+        val rows =
+            listOf(
+                trade("paper-buy", DailyPerformanceEntity.MODE_PAPER, today, feeLamports = 3),
+                trade(
+                    "paper-win",
+                    DailyPerformanceEntity.MODE_PAPER,
+                    today,
+                    side = "SELL",
+                    outputAtomic = "120",
+                    grossInputLamports = 100,
+                    feeLamports = 2,
+                ),
+                trade(
+                    "paper-loss",
+                    DailyPerformanceEntity.MODE_PAPER,
+                    today.minusDays(1),
+                    side = "SELL",
+                    outputAtomic = "95",
+                    grossInputLamports = 100,
+                ),
+                trade(
+                    "live-win",
+                    DailyPerformanceEntity.MODE_LIVE,
+                    today,
+                    side = "SELL",
+                    outputAtomic = "200",
+                    actualOutputAtomic = "200",
+                    grossInputLamports = 100,
+                    feeLamports = 9,
+                ),
             )
+        val filtered =
+            filterTradeHistory(rows, HistoryModeFilter.Paper, HistoryDateFilter.SevenDays, now)
+        val summary = summarizeTradeHistory(filtered)
 
         requireNotNull(summary)
         assertEquals(BigInteger.valueOf(15), summary.netPnlLamports)
         assertEquals(BigInteger.valueOf(5), summary.totalFeesLamports)
-        assertEquals(2L, summary.wins)
-        assertEquals(2L, summary.losses)
+        assertEquals(1L, summary.wins)
+        assertEquals(1L, summary.losses)
+    }
+
+    @Test
+    fun historyBoundsRowsBeforeFilteringAndAggregating() {
+        val today = LocalDate.of(2026, 8, 9)
+        val now = today.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+        val rows =
+            List(250) { index ->
+                trade("paper-$index", DailyPerformanceEntity.MODE_PAPER, today, feeLamports = 1)
+            } +
+                trade(
+                    "older-live",
+                    DailyPerformanceEntity.MODE_LIVE,
+                    today.minusDays(1),
+                    side = "SELL",
+                    outputAtomic = "200",
+                    actualOutputAtomic = "200",
+                    grossInputLamports = 100,
+                    feeLamports = 99,
+                )
+
+        val allRows = filterTradeHistory(rows, HistoryModeFilter.All, HistoryDateFilter.All, now)
+        assertEquals(250, allRows.size)
+        assertEquals(BigInteger.valueOf(250), summarizeTradeHistory(allRows)?.totalFeesLamports)
+        assertTrue(filterTradeHistory(rows, HistoryModeFilter.Live, HistoryDateFilter.All, now).isEmpty())
+    }
+
+    @Test
+    fun liveSummaryDoesNotUseExpectedOutputWhenActualOutputIsMissing() {
+        val today = LocalDate.of(2026, 8, 9)
+        val live =
+            trade(
+                "live",
+                DailyPerformanceEntity.MODE_LIVE,
+                today,
+                side = "SELL",
+                outputAtomic = "999",
+                actualOutputAtomic = null,
+                grossInputLamports = 100,
+                feeLamports = 4,
+            )
+
+        val summary = requireNotNull(summarizeTradeHistory(listOf(live)))
+        assertEquals(BigInteger.ZERO, summary.netPnlLamports)
+        assertEquals(BigInteger.valueOf(4), summary.totalFeesLamports)
+        assertEquals(0L, summary.wins)
+        assertEquals(0L, summary.losses)
+    }
+
+    @Test
+    fun performanceSummaryKeepsVeryLargeAmountsExact() {
+        val today = LocalDate.of(2026, 8, 9)
+        val outputAtomic = "1000000000000000000000000000000"
+        val rows =
+            listOf(
+                trade(
+                    "large-sell",
+                    DailyPerformanceEntity.MODE_PAPER,
+                    today,
+                    side = "SELL",
+                    outputAtomic = outputAtomic,
+                    grossInputLamports = Long.MAX_VALUE,
+                    feeLamports = Long.MAX_VALUE,
+                ),
+                trade(
+                    "large-fee",
+                    DailyPerformanceEntity.MODE_PAPER,
+                    today,
+                    feeLamports = Long.MAX_VALUE,
+                ),
+            )
+
+        val summary = requireNotNull(summarizeTradeHistory(rows))
+
+        assertEquals(BigInteger(outputAtomic).subtract(BigInteger.valueOf(Long.MAX_VALUE)), summary.netPnlLamports)
+        assertEquals(BigInteger.valueOf(Long.MAX_VALUE).multiply(BigInteger.TWO), summary.totalFeesLamports)
+        assertEquals(1L, summary.wins)
+        assertEquals(0L, summary.losses)
     }
 
     @Test
@@ -113,25 +218,34 @@ class HistoryAndConfigurationUiTest {
     fun sellNowGateRequiresOpenPaperPositionAndBlocksDemo() {
         val paper = position(mode = "PAPER", status = "OPEN")
 
-        assertTrue(canRequestSellNow(paper, demoMode = false))
-        assertFalse(canRequestSellNow(paper, demoMode = true))
-        assertFalse(canRequestSellNow(position(mode = "LIVE", status = "OPEN"), demoMode = false))
-        assertFalse(canRequestSellNow(position(mode = "PAPER", status = "EXIT_REQUESTED"), demoMode = false))
+        assertTrue(canRequestSellNow(paper, MonitorState.Running, demoMode = false))
+        assertFalse(canRequestSellNow(paper, MonitorState.Paused, demoMode = false))
+        assertFalse(canRequestSellNow(paper, MonitorState.Running, demoMode = true))
+        assertFalse(canRequestSellNow(position(mode = "LIVE", status = "OPEN"), MonitorState.Running, demoMode = false))
+        assertFalse(
+            canRequestSellNow(
+                position(mode = "PAPER", status = "EXIT_REQUESTED"),
+                MonitorState.Running,
+                demoMode = false,
+            ),
+        )
     }
 
     @Test
     fun emergencyExitGateRequiresProtectablePaperPositionAndBlocksDemo() {
         val paper = position(mode = "PAPER", status = "EXIT_BLOCKED")
 
-        assertTrue(canRequestEmergencyExit(listOf(paper), demoMode = false))
-        assertFalse(canRequestEmergencyExit(listOf(paper), demoMode = true))
+        assertTrue(canRequestEmergencyExit(listOf(paper), MonitorState.Running, demoMode = false))
+        assertFalse(canRequestEmergencyExit(listOf(paper), MonitorState.Paused, demoMode = false))
+        assertFalse(canRequestEmergencyExit(listOf(paper), MonitorState.Running, demoMode = true))
         assertFalse(
             canRequestEmergencyExit(
                 listOf(position(mode = "LIVE", status = "OPEN")),
+                MonitorState.Running,
                 demoMode = false,
             ),
         )
-        assertFalse(canRequestEmergencyExit(emptyList(), demoMode = false))
+        assertFalse(canRequestEmergencyExit(emptyList(), MonitorState.Running, demoMode = false))
     }
 
     @Test
@@ -148,15 +262,21 @@ class HistoryAndConfigurationUiTest {
         id: String,
         mode: String,
         date: LocalDate,
+        side: String = "BUY",
+        outputAtomic: String = "1",
+        actualOutputAtomic: String? = if (mode == DailyPerformanceEntity.MODE_LIVE) outputAtomic else null,
+        grossInputLamports: Long? = null,
+        feeLamports: Long = 0,
     ) = TradeExportRow(
         intentId = id,
-        side = "BUY",
+        side = side,
         mint = "mint-$id",
         mode = mode,
         symbol = null,
         exitReason = null,
         openedAtMillis = null,
-        closedAtMillis = null,
+        closedAtMillis = grossInputLamports?.let { date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli() },
+        grossInputLamports = grossInputLamports,
         highestExecutableSellLamports = null,
         lowestExecutableSellLamports = null,
         strategyVersion = 1,
@@ -166,32 +286,12 @@ class HistoryAndConfigurationUiTest {
         transactionSignature = null,
         transactionStatus = "PAPER_FILLED",
         requestedInputAtomic = "1",
-        expectedOutputAtomic = "1",
+        expectedOutputAtomic = outputAtomic,
         actualInputAtomic = "1",
-        actualOutputAtomic = "1",
-        totalFeeLamports = 0,
+        actualOutputAtomic = actualOutputAtomic,
+        totalFeeLamports = feeLamports,
         createdAtMillis = date.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli(),
         confirmedAtMillis = null,
-    )
-
-    private fun performance(
-        date: LocalDate,
-        mode: String,
-        net: Long,
-        fees: Long,
-        wins: Int,
-        losses: Int,
-    ) = DailyPerformanceEntity(
-        epochDay = date.toEpochDay(),
-        mode = mode,
-        grossPnlLamports = net + fees,
-        netPnlLamports = net,
-        totalFeesLamports = fees,
-        tradeCount = wins + losses,
-        winCount = wins,
-        lossCount = losses,
-        consecutiveLosses = losses,
-        updatedAtMillis = 1,
     )
 
     private fun position(

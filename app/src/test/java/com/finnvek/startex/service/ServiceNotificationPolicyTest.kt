@@ -17,7 +17,15 @@ class ServiceNotificationPolicyTest {
     }
 
     @Test
-    fun `trade and safety events use the expected channels`() {
+    fun `important state changes use noticeable channels`() {
+        assertEquals(
+            StartExApplication.CHANNEL_BOT_STATUS,
+            policy.alert("INFO", "SESSION", "MONITORING_STARTED", "session")?.channelId,
+        )
+        assertEquals(
+            StartExApplication.CHANNEL_BOT_STATUS,
+            policy.alert("INFO", "SESSION", "USER_REQUESTED", "session")?.channelId,
+        )
         assertEquals(
             StartExApplication.CHANNEL_TRADES,
             policy.alert("INFO", "PAPER", "PAPER_POSITION_OPENED", "position")?.channelId,
@@ -36,7 +44,15 @@ class ServiceNotificationPolicyTest {
         )
         assertEquals(
             StartExApplication.CHANNEL_TRADES,
+            policy.alert("WARNING", "WALLET", "MANUAL_TRANSFER_UNCERTAIN", "transfer")?.channelId,
+        )
+        assertEquals(
+            StartExApplication.CHANNEL_TRADES,
             policy.alert("INFO", "WALLET", "MANUAL_TRANSFER_CONFIRMED", "transfer")?.channelId,
+        )
+        assertEquals(
+            StartExApplication.CHANNEL_CRITICAL,
+            policy.alert("WARN", "RISK", "CIRCUIT_BREAKER_ACTIVE", null)?.channelId,
         )
     }
 
@@ -64,8 +80,7 @@ class ServiceNotificationPolicyTest {
             )
 
         assertEquals(ForegroundStatus.PROTECTING_POSITION, model.status)
-        assertEquals("+0.025 SOL", model.pnlText)
-        assertEquals("1m ago", model.marketAgeText)
+        assertEquals(60L, model.marketAgeSeconds)
     }
 
     @Test

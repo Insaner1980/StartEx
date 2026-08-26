@@ -11,11 +11,12 @@ private fun com.finnvek.startex.ui.LoadingScreen(): kotlin.Unit
   params:
 
 @Composable
-private fun com.finnvek.startex.ui.MainNavigation(state: com.finnvek.startex.ui.PersistedAppState, destination: com.finnvek.startex.ui.AppDestination, onDestination: kotlin.Function1<com.finnvek.startex.ui.AppDestination, kotlin.Unit>, onPreflight: kotlin.Function0<kotlin.Unit>, onProviders: kotlin.Function0<kotlin.Unit>, onConfiguration: kotlin.Function0<kotlin.Unit>, onBatteryOptimizationSettings: kotlin.Function0<kotlin.Unit>, onPause: kotlin.Function0<kotlin.Unit>, onResume: kotlin.Function0<kotlin.Unit>, onStop: kotlin.Function0<kotlin.Unit>, viewModel: com.finnvek.startex.ui.StartExViewModel): kotlin.Unit
+private fun com.finnvek.startex.ui.MainNavigation(state: com.finnvek.startex.ui.PersistedAppState, notificationsAllowed: kotlin.Boolean, destination: com.finnvek.startex.ui.AppDestination, onDestination: kotlin.Function1<com.finnvek.startex.ui.AppDestination, kotlin.Unit>, onPreflight: kotlin.Function0<kotlin.Unit>, onProviders: kotlin.Function0<kotlin.Unit>, onConfiguration: kotlin.Function0<kotlin.Unit>, onBatteryOptimizationSettings: kotlin.Function0<kotlin.Unit>, onPause: kotlin.Function0<kotlin.Unit>, onResume: kotlin.Function0<kotlin.Unit>, onStop: kotlin.Function0<kotlin.Unit>, receiveFocusRequester: androidx.compose.ui.focus.FocusRequester, settingsProvidersFocusRequester: androidx.compose.ui.focus.FocusRequester, settingsStrategyFocusRequester: androidx.compose.ui.focus.FocusRequester, settingsHealthFocusRequester: androidx.compose.ui.focus.FocusRequester, homePreflightFocusRequester: androidx.compose.ui.focus.FocusRequester, viewModel: com.finnvek.startex.ui.StartExViewModel): kotlin.Unit
   skippable: false
   restartable: true
   params:
     - state: RUNTIME (requires runtime check)
+    - notificationsAllowed: STABLE (primitive type)
     - destination: STABLE (class with no mutable properties)
     - onDestination: STABLE (function type)
     - onPreflight: STABLE (function type)
@@ -25,6 +26,11 @@ private fun com.finnvek.startex.ui.MainNavigation(state: com.finnvek.startex.ui.
     - onPause: STABLE (function type)
     - onResume: STABLE (function type)
     - onStop: STABLE (function type)
+    - receiveFocusRequester: STABLE (marked @Stable or @Immutable)
+    - settingsProvidersFocusRequester: STABLE (marked @Stable or @Immutable)
+    - settingsStrategyFocusRequester: STABLE (marked @Stable or @Immutable)
+    - settingsHealthFocusRequester: STABLE (marked @Stable or @Immutable)
+    - homePreflightFocusRequester: STABLE (marked @Stable or @Immutable)
     - viewModel: STABLE (marked @Stable or @Immutable)
 
 @Composable
@@ -36,7 +42,7 @@ public fun com.finnvek.startex.ui.StartExApp(viewModel: com.finnvek.startex.ui.S
     - onAuthenticate: STABLE (function type)
 
 @Composable
-private fun com.finnvek.startex.ui.StartExContent(state: com.finnvek.startex.ui.PersistedAppState, walletSetup: com.finnvek.startex.ui.WalletSetupState, walletOverlay: com.finnvek.startex.ui.WalletOverlay, walletTransfer: com.finnvek.startex.ui.WalletTransferState, configurationSave: com.finnvek.startex.ui.ConfigurationSaveState, viewModel: com.finnvek.startex.ui.StartExViewModel): kotlin.Unit
+private fun com.finnvek.startex.ui.StartExContent(state: com.finnvek.startex.ui.PersistedAppState, walletSetup: com.finnvek.startex.ui.WalletSetupState, walletOverlay: com.finnvek.startex.ui.WalletOverlay, walletTransfer: com.finnvek.startex.ui.WalletTransferState, configurationSave: com.finnvek.startex.ui.ConfigurationSaveState, providerTestsInProgress: kotlin.collections.Set<com.finnvek.startex.network.ProviderId>, startupError: kotlin.Int?, viewModel: com.finnvek.startex.ui.StartExViewModel): kotlin.Unit
   skippable: false
   restartable: true
   params:
@@ -45,7 +51,24 @@ private fun com.finnvek.startex.ui.StartExContent(state: com.finnvek.startex.ui.
     - walletOverlay: STABLE (class with no mutable properties)
     - walletTransfer: STABLE (class with no mutable properties)
     - configurationSave: STABLE (class with no mutable properties)
+    - providerTestsInProgress: RUNTIME (requires runtime check)
+    - startupError: STABLE (class with no mutable properties)
     - viewModel: STABLE (marked @Stable or @Immutable)
+
+@Composable
+internal fun com.finnvek.startex.ui.StartExNavigationBar(destination: com.finnvek.startex.ui.AppDestination, onDestination: kotlin.Function1<com.finnvek.startex.ui.AppDestination, kotlin.Unit>): kotlin.Unit
+  skippable: true
+  restartable: true
+  params:
+    - destination: STABLE (class with no mutable properties)
+    - onDestination: STABLE (function type)
+
+@Composable
+private fun com.finnvek.startex.ui.StartupErrorScreen(message: kotlin.Int): kotlin.Unit
+  skippable: true
+  restartable: true
+  params:
+    - message: STABLE (primitive type)
 
 @Composable
 public fun com.finnvek.startex.ui.components.AddressText(address: kotlin.String, modifier: androidx.compose.ui.Modifier, abbreviated: kotlin.Boolean): kotlin.Unit
@@ -83,6 +106,7 @@ public fun com.finnvek.startex.ui.components.ScreenColumn(modifier: androidx.com
   params:
     - modifier: STABLE (marked @Stable or @Immutable)
     - content: STABLE (composable function type)
+
 @Composable
 public fun com.finnvek.startex.ui.components.ScreenHeader(title: kotlin.String, modifier: androidx.compose.ui.Modifier, subtitle: kotlin.String?, trailing: @[Composable] androidx.compose.runtime.internal.ComposableFunction0<kotlin.Unit>): kotlin.Unit
   skippable: true
@@ -111,7 +135,7 @@ public fun com.finnvek.startex.ui.components.SectionHeading(title: kotlin.String
     - subtitle: STABLE (class with no mutable properties)
 
 @Composable
-public fun com.finnvek.startex.ui.components.SettingsRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: kotlin.String, modifier: androidx.compose.ui.Modifier, supportingText: kotlin.String?, onClick: kotlin.Function0<kotlin.Unit>?, trailing: @[Composable] @[ExtensionFunctionType] androidx.compose.runtime.internal.ComposableFunction1<androidx.compose.foundation.layout.RowScope, kotlin.Unit>): kotlin.Unit
+public fun com.finnvek.startex.ui.components.SettingsRow(icon: androidx.compose.ui.graphics.vector.ImageVector, title: kotlin.String, modifier: androidx.compose.ui.Modifier, supportingText: kotlin.String?, onClick: kotlin.Function0<kotlin.Unit>?, enabled: kotlin.Boolean, disabledReason: kotlin.String?, toggleState: kotlin.Boolean?, focusRequester: androidx.compose.ui.focus.FocusRequester?, trailing: @[Composable] @[ExtensionFunctionType] androidx.compose.runtime.internal.ComposableFunction1<androidx.compose.foundation.layout.RowScope, kotlin.Unit>): kotlin.Unit
   skippable: true
   restartable: true
   params:
@@ -120,6 +144,10 @@ public fun com.finnvek.startex.ui.components.SettingsRow(icon: androidx.compose.
     - modifier: STABLE (marked @Stable or @Immutable)
     - supportingText: STABLE (class with no mutable properties)
     - onClick: STABLE (function type)
+    - enabled: STABLE (primitive type)
+    - disabledReason: STABLE (class with no mutable properties)
+    - toggleState: STABLE (class with no mutable properties)
+    - focusRequester: STABLE (marked @Stable or @Immutable)
     - trailing: STABLE (composable function type)
 
 @Composable
@@ -175,8 +203,8 @@ public fun com.finnvek.startex.ui.screens.ConfigurationEditorScreen(state: com.f
     - modifier: STABLE (marked @Stable or @Immutable)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.ConfigurationFieldInput(value: kotlin.String, enabled: kotlin.Boolean, onValueChange: kotlin.Function1<kotlin.String, kotlin.Unit>, label: kotlin.String, unit: kotlin.String, range: kotlin.String, isError: kotlin.Boolean): kotlin.Unit
-  skippable: true
+private fun com.finnvek.startex.ui.screens.ConfigurationFieldInput(value: kotlin.String, enabled: kotlin.Boolean, onValueChange: kotlin.Function1<kotlin.String, kotlin.Unit>, label: kotlin.String, unit: kotlin.String, range: kotlin.String, errorMessage: kotlin.String?, keyboardType: androidx.compose.ui.text.input.KeyboardType, imeAction: androidx.compose.ui.text.input.ImeAction): kotlin.Unit
+  skippable: false
   restartable: true
   params:
     - value: STABLE (String is immutable)
@@ -185,7 +213,9 @@ private fun com.finnvek.startex.ui.screens.ConfigurationFieldInput(value: kotlin
     - label: STABLE (String is immutable)
     - unit: STABLE (String is immutable)
     - range: STABLE (String is immutable)
-    - isError: STABLE (primitive type)
+    - errorMessage: STABLE (class with no mutable properties)
+    - keyboardType: RUNTIME (requires runtime check)
+    - imeAction: RUNTIME (requires runtime check)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.ConfigurationSaveStatus(state: com.finnvek.startex.ui.ConfigurationSaveState): kotlin.Unit
@@ -248,7 +278,17 @@ public fun com.finnvek.startex.ui.screens.HistoryScreen(state: com.finnvek.start
     - modifier: STABLE (marked @Stable or @Immutable)
 
 @Composable
-public fun com.finnvek.startex.ui.screens.HomeScreen(state: com.finnvek.startex.ui.PersistedAppState, onPreflight: kotlin.Function0<kotlin.Unit>, onRecover: kotlin.Function0<kotlin.Unit>, onPause: kotlin.Function0<kotlin.Unit>, onResume: kotlin.Function0<kotlin.Unit>, onStop: kotlin.Function0<kotlin.Unit>, onSellNow: kotlin.Function1<kotlin.String, kotlin.Unit>, onEmergencyExit: kotlin.Function0<kotlin.Unit>, onStopAfterClose: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier): kotlin.Unit
+internal fun com.finnvek.startex.ui.screens.HistoryScreen(state: com.finnvek.startex.ui.HistoryScreenState, onExportCsv: kotlin.Function0<kotlin.Unit>, onExportJson: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier): kotlin.Unit
+  skippable: true
+  restartable: true
+  params:
+    - state: STABLE (marked @Stable or @Immutable)
+    - onExportCsv: STABLE (function type)
+    - onExportJson: STABLE (function type)
+    - modifier: STABLE (marked @Stable or @Immutable)
+
+@Composable
+public fun com.finnvek.startex.ui.screens.HomeScreen(state: com.finnvek.startex.ui.PersistedAppState, onPreflight: kotlin.Function0<kotlin.Unit>, onRecover: kotlin.Function0<kotlin.Unit>, onPause: kotlin.Function0<kotlin.Unit>, onResume: kotlin.Function0<kotlin.Unit>, onStop: kotlin.Function0<kotlin.Unit>, onSellNow: kotlin.Function1<kotlin.String, kotlin.Unit>, onEmergencyExit: kotlin.Function0<kotlin.Unit>, onStopAfterClose: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier, preflightFocusRequester: androidx.compose.ui.focus.FocusRequester?): kotlin.Unit
   skippable: false
   restartable: true
   params:
@@ -262,24 +302,43 @@ public fun com.finnvek.startex.ui.screens.HomeScreen(state: com.finnvek.startex.
     - onEmergencyExit: STABLE (function type)
     - onStopAfterClose: STABLE (function type)
     - modifier: STABLE (marked @Stable or @Immutable)
+    - preflightFocusRequester: STABLE (marked @Stable or @Immutable)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.KeylessProviderCard(health: com.finnvek.startex.data.local.ProviderHealthEntity?, onTest: kotlin.Function0<kotlin.Unit>): kotlin.Unit
+internal fun com.finnvek.startex.ui.screens.HomeScreen(state: com.finnvek.startex.ui.HomeScreenState, onPreflight: kotlin.Function0<kotlin.Unit>, onRecover: kotlin.Function0<kotlin.Unit>, onPause: kotlin.Function0<kotlin.Unit>, onResume: kotlin.Function0<kotlin.Unit>, onStop: kotlin.Function0<kotlin.Unit>, onSellNow: kotlin.Function1<kotlin.String, kotlin.Unit>, onEmergencyExit: kotlin.Function0<kotlin.Unit>, onStopAfterClose: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier, preflightFocusRequester: androidx.compose.ui.focus.FocusRequester?): kotlin.Unit
+  skippable: true
+  restartable: true
+  params:
+    - state: STABLE (marked @Stable or @Immutable)
+    - onPreflight: STABLE (function type)
+    - onRecover: STABLE (function type)
+    - onPause: STABLE (function type)
+    - onResume: STABLE (function type)
+    - onStop: STABLE (function type)
+    - onSellNow: STABLE (function type)
+    - onEmergencyExit: STABLE (function type)
+    - onStopAfterClose: STABLE (function type)
+    - modifier: STABLE (marked @Stable or @Immutable)
+    - preflightFocusRequester: STABLE (marked @Stable or @Immutable)
+
+@Composable
+private fun com.finnvek.startex.ui.screens.KeylessProviderCard(health: com.finnvek.startex.data.local.ProviderHealthEntity?, onTest: kotlin.Function0<kotlin.Unit>, testing: kotlin.Boolean): kotlin.Unit
   skippable: true
   restartable: true
   params:
     - health: STABLE (class with no mutable properties)
     - onTest: STABLE (function type)
+    - testing: STABLE (primitive type)
 
 @Composable
-public fun com.finnvek.startex.ui.screens.LockScreen(address: kotlin.String, recoveryRequired: kotlin.Boolean, onUnlock: kotlin.Function0<kotlin.Unit>, onRestore: kotlin.Function0<kotlin.Unit>, onStop: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier): kotlin.Unit
+public fun com.finnvek.startex.ui.screens.LockScreen(recoveryRequired: kotlin.Boolean, onUnlock: kotlin.Function0<kotlin.Unit>, onRestore: kotlin.Function0<kotlin.Unit>, onRecover: kotlin.Function0<kotlin.Unit>, onStop: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier): kotlin.Unit
   skippable: true
   restartable: true
   params:
-    - address: STABLE (String is immutable)
     - recoveryRequired: STABLE (primitive type)
     - onUnlock: STABLE (function type)
     - onRestore: STABLE (function type)
+    - onRecover: STABLE (function type)
     - onStop: STABLE (function type)
     - modifier: STABLE (marked @Stable or @Immutable)
 
@@ -294,7 +353,7 @@ private fun com.finnvek.startex.ui.screens.MnemonicBackupScreen(words: kotlin.co
     - onCancel: STABLE (function type)
 
 @Composable
-public fun com.finnvek.startex.ui.screens.OnboardingScreen(state: com.finnvek.startex.ui.PersistedAppState, onCreateWallet: kotlin.Function0<kotlin.Unit>, onRestoreWallet: kotlin.Function0<kotlin.Unit>, onConfigureProviders: kotlin.Function0<kotlin.Unit>, onTrustedAddresses: kotlin.Function0<kotlin.Unit>, onRequestSecurityMode: kotlin.Function3<kotlin.Boolean, kotlin.Boolean, kotlin.Boolean, kotlin.Unit>, onComplete: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier): kotlin.Unit
+public fun com.finnvek.startex.ui.screens.OnboardingScreen(state: com.finnvek.startex.ui.PersistedAppState, onCreateWallet: kotlin.Function0<kotlin.Unit>, onRestoreWallet: kotlin.Function0<kotlin.Unit>, onConfigureProviders: kotlin.Function0<kotlin.Unit>, onTrustedAddresses: kotlin.Function0<kotlin.Unit>, onRequestSecurityMode: kotlin.Function3<kotlin.Boolean, kotlin.Boolean, kotlin.Boolean, kotlin.Unit>, onComplete: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier, providersFocusRequester: androidx.compose.ui.focus.FocusRequester?): kotlin.Unit
   skippable: false
   restartable: true
   params:
@@ -306,6 +365,7 @@ public fun com.finnvek.startex.ui.screens.OnboardingScreen(state: com.finnvek.st
     - onRequestSecurityMode: STABLE (function type)
     - onComplete: STABLE (function type)
     - modifier: STABLE (marked @Stable or @Immutable)
+    - providersFocusRequester: STABLE (marked @Stable or @Immutable)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.PaperModeCard(mode: com.finnvek.startex.ui.TradingMode): kotlin.Unit
@@ -329,12 +389,13 @@ private fun com.finnvek.startex.ui.screens.PreflightReadyToConnectRow(label: kot
     - label: STABLE (String is immutable)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.PreflightRow(label: kotlin.String, ready: kotlin.Boolean): kotlin.Unit
+private fun com.finnvek.startex.ui.screens.PreflightRow(label: kotlin.String, ready: kotlin.Boolean, actionRequiredReason: kotlin.String): kotlin.Unit
   skippable: true
   restartable: true
   params:
     - label: STABLE (String is immutable)
     - ready: STABLE (primitive type)
+    - actionRequiredReason: STABLE (String is immutable)
 
 @Composable
 public fun com.finnvek.startex.ui.screens.PreflightScreen(state: com.finnvek.startex.ui.PreflightState, mode: com.finnvek.startex.ui.TradingMode, onBack: kotlin.Function0<kotlin.Unit>, onStart: kotlin.Function0<kotlin.Unit>, onRequestNotifications: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier): kotlin.Unit
@@ -349,7 +410,7 @@ public fun com.finnvek.startex.ui.screens.PreflightScreen(state: com.finnvek.sta
     - modifier: STABLE (marked @Stable or @Immutable)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.ProviderCard(provider: com.finnvek.startex.network.ProviderId, configured: kotlin.Boolean, active: kotlin.Boolean, health: com.finnvek.startex.data.local.ProviderHealthEntity?, onSave: kotlin.Function2<com.finnvek.startex.network.ProviderId, kotlin.CharArray, kotlin.Unit>, onRemove: kotlin.Function1<com.finnvek.startex.network.ProviderId, kotlin.Unit>, onTest: kotlin.Function1<com.finnvek.startex.network.ProviderId, kotlin.Unit>): kotlin.Unit
+private fun com.finnvek.startex.ui.screens.ProviderCard(provider: com.finnvek.startex.network.ProviderId, configured: kotlin.Boolean, active: kotlin.Boolean, health: com.finnvek.startex.data.local.ProviderHealthEntity?, onSave: kotlin.Function2<com.finnvek.startex.network.ProviderId, kotlin.CharArray, kotlin.Unit>, onRemove: kotlin.Function1<com.finnvek.startex.network.ProviderId, kotlin.Unit>, onTest: kotlin.Function1<com.finnvek.startex.network.ProviderId, kotlin.Unit>, testing: kotlin.Boolean): kotlin.Unit
   skippable: true
   restartable: true
   params:
@@ -360,17 +421,19 @@ private fun com.finnvek.startex.ui.screens.ProviderCard(provider: com.finnvek.st
     - onSave: STABLE (function type)
     - onRemove: STABLE (function type)
     - onTest: STABLE (function type)
+    - testing: STABLE (primitive type)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.ProviderSetupCard(state: com.finnvek.startex.ui.PersistedAppState, onConfigureProviders: kotlin.Function0<kotlin.Unit>): kotlin.Unit
+private fun com.finnvek.startex.ui.screens.ProviderSetupCard(state: com.finnvek.startex.ui.PersistedAppState, onConfigureProviders: kotlin.Function0<kotlin.Unit>, focusRequester: androidx.compose.ui.focus.FocusRequester?): kotlin.Unit
   skippable: false
   restartable: true
   params:
     - state: RUNTIME (requires runtime check)
     - onConfigureProviders: STABLE (function type)
+    - focusRequester: STABLE (marked @Stable or @Immutable)
 
 @Composable
-public fun com.finnvek.startex.ui.screens.ProviderSetupScreen(configuredProviders: kotlin.collections.Set<com.finnvek.startex.network.ProviderId>, activatedProviders: kotlin.collections.Set<com.finnvek.startex.network.ProviderId>, providerHealth: kotlin.collections.List<com.finnvek.startex.data.local.ProviderHealthEntity>, onSave: kotlin.Function2<com.finnvek.startex.network.ProviderId, kotlin.CharArray, kotlin.Unit>, onRemove: kotlin.Function1<com.finnvek.startex.network.ProviderId, kotlin.Unit>, onTest: kotlin.Function1<com.finnvek.startex.network.ProviderId, kotlin.Unit>, onBack: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier): kotlin.Unit
+public fun com.finnvek.startex.ui.screens.ProviderSetupScreen(configuredProviders: kotlin.collections.Set<com.finnvek.startex.network.ProviderId>, activatedProviders: kotlin.collections.Set<com.finnvek.startex.network.ProviderId>, providerHealth: kotlin.collections.List<com.finnvek.startex.data.local.ProviderHealthEntity>, onSave: kotlin.Function2<com.finnvek.startex.network.ProviderId, kotlin.CharArray, kotlin.Unit>, onRemove: kotlin.Function1<com.finnvek.startex.network.ProviderId, kotlin.Unit>, onTest: kotlin.Function1<com.finnvek.startex.network.ProviderId, kotlin.Unit>, onBack: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier, testingProviders: kotlin.collections.Set<com.finnvek.startex.network.ProviderId>): kotlin.Unit
   skippable: false
   restartable: true
   params:
@@ -382,15 +445,17 @@ public fun com.finnvek.startex.ui.screens.ProviderSetupScreen(configuredProvider
     - onTest: STABLE (function type)
     - onBack: STABLE (function type)
     - modifier: STABLE (marked @Stable or @Immutable)
+    - testingProviders: RUNTIME (requires runtime check)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.ReceiveScreen(state: com.finnvek.startex.ui.PersistedAppState, onBack: kotlin.Function0<kotlin.Unit>, onRefreshBalance: kotlin.Function0<kotlin.Unit>): kotlin.Unit
+private fun com.finnvek.startex.ui.screens.ReceiveScreen(state: com.finnvek.startex.ui.PersistedAppState, onBack: kotlin.Function0<kotlin.Unit>, onRefreshBalance: kotlin.Function0<kotlin.Unit>, qrBitmapFactory: kotlin.Function1<kotlin.String, android.graphics.Bitmap?>): kotlin.Unit
   skippable: false
   restartable: true
   params:
     - state: RUNTIME (requires runtime check)
     - onBack: STABLE (function type)
     - onRefreshBalance: STABLE (function type)
+    - qrBitmapFactory: STABLE (function type)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.RestoreWalletScreen(state: com.finnvek.startex.ui.WalletSetupState.RestoreInput, onRestore: kotlin.Function1<kotlin.CharArray, kotlin.Unit>, onCancel: kotlin.Function0<kotlin.Unit>): kotlin.Unit
@@ -474,20 +539,23 @@ private fun com.finnvek.startex.ui.screens.SensitiveHeader(title: kotlin.String,
     - onBack: STABLE (function type)
 
 @Composable
-public fun com.finnvek.startex.ui.screens.SettingsScreen(state: com.finnvek.startex.ui.PersistedAppState, onProviders: kotlin.Function0<kotlin.Unit>, onPreflight: kotlin.Function0<kotlin.Unit>, onLock: kotlin.Function0<kotlin.Unit>, onStop: kotlin.Function0<kotlin.Unit>, onSetDemoMode: kotlin.Function1<kotlin.Boolean, kotlin.Unit>, onRequestSecurityMode: kotlin.Function3<kotlin.Boolean, kotlin.Boolean, kotlin.Boolean, kotlin.Unit>, onStrategyAndRisk: kotlin.Function0<kotlin.Unit>, onBatteryOptimizationSettings: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier): kotlin.Unit
+public fun com.finnvek.startex.ui.screens.SettingsScreen(state: com.finnvek.startex.ui.PersistedAppState, onProviders: kotlin.Function0<kotlin.Unit>, onPreflight: kotlin.Function0<kotlin.Unit>, onStop: kotlin.Function0<kotlin.Unit>, onSetDemoMode: kotlin.Function1<kotlin.Boolean, kotlin.Unit>, onRequestSecurityMode: kotlin.Function3<kotlin.Boolean, kotlin.Boolean, kotlin.Boolean, kotlin.Unit>, onStrategyAndRisk: kotlin.Function0<kotlin.Unit>, onBatteryOptimizationSettings: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier, notificationsAllowed: kotlin.Boolean, providersFocusRequester: androidx.compose.ui.focus.FocusRequester?, strategyFocusRequester: androidx.compose.ui.focus.FocusRequester?, healthFocusRequester: androidx.compose.ui.focus.FocusRequester?): kotlin.Unit
   skippable: false
   restartable: true
   params:
     - state: RUNTIME (requires runtime check)
     - onProviders: STABLE (function type)
     - onPreflight: STABLE (function type)
-    - onLock: STABLE (function type)
     - onStop: STABLE (function type)
     - onSetDemoMode: STABLE (function type)
     - onRequestSecurityMode: STABLE (function type)
     - onStrategyAndRisk: STABLE (function type)
     - onBatteryOptimizationSettings: STABLE (function type)
     - modifier: STABLE (marked @Stable or @Immutable)
+    - notificationsAllowed: STABLE (primitive type)
+    - providersFocusRequester: STABLE (marked @Stable or @Immutable)
+    - strategyFocusRequester: STABLE (marked @Stable or @Immutable)
+    - healthFocusRequester: STABLE (marked @Stable or @Immutable)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.SetupStatusCard(title: kotlin.String, ready: kotlin.Boolean, readyText: kotlin.String, missingText: kotlin.String): kotlin.Unit
@@ -509,7 +577,7 @@ private fun com.finnvek.startex.ui.screens.SetupStatusRow(label: kotlin.String, 
     - detail: STABLE (String is immutable)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.SetupStepContent(pageIndex: kotlin.Int, state: com.finnvek.startex.ui.PersistedAppState, onCreateWallet: kotlin.Function0<kotlin.Unit>, onRestoreWallet: kotlin.Function0<kotlin.Unit>, onConfigureProviders: kotlin.Function0<kotlin.Unit>, onTrustedAddresses: kotlin.Function0<kotlin.Unit>, onRequestSecurityMode: kotlin.Function3<kotlin.Boolean, kotlin.Boolean, kotlin.Boolean, kotlin.Unit>): kotlin.Unit
+private fun com.finnvek.startex.ui.screens.SetupStepContent(pageIndex: kotlin.Int, state: com.finnvek.startex.ui.PersistedAppState, onCreateWallet: kotlin.Function0<kotlin.Unit>, onRestoreWallet: kotlin.Function0<kotlin.Unit>, onConfigureProviders: kotlin.Function0<kotlin.Unit>, onTrustedAddresses: kotlin.Function0<kotlin.Unit>, onRequestSecurityMode: kotlin.Function3<kotlin.Boolean, kotlin.Boolean, kotlin.Boolean, kotlin.Unit>, providersFocusRequester: androidx.compose.ui.focus.FocusRequester?): kotlin.Unit
   skippable: false
   restartable: true
   params:
@@ -520,6 +588,7 @@ private fun com.finnvek.startex.ui.screens.SetupStepContent(pageIndex: kotlin.In
     - onConfigureProviders: STABLE (function type)
     - onTrustedAddresses: STABLE (function type)
     - onRequestSecurityMode: STABLE (function type)
+    - providersFocusRequester: STABLE (marked @Stable or @Immutable)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.TextButtonWithMinimumTarget(text: kotlin.String, onClick: kotlin.Function0<kotlin.Unit>): kotlin.Unit
@@ -600,25 +669,27 @@ private fun com.finnvek.startex.ui.screens.TrustedAddressesScreen(addresses: kot
     - onBack: STABLE (function type)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.WalletActivityRow(activity: com.finnvek.startex.ui.WalletActivity): kotlin.Unit
+private fun com.finnvek.startex.ui.screens.WalletActivityRow(activity: com.finnvek.startex.ui.WalletActivity, stale: kotlin.Boolean, demoMode: kotlin.Boolean): kotlin.Unit
   skippable: true
   restartable: true
   params:
     - activity: STABLE (class with no mutable properties)
+    - stale: STABLE (primitive type)
+    - demoMode: STABLE (primitive type)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.WalletDataFreshness(state: com.finnvek.startex.ui.PersistedAppState): kotlin.Unit
-  skippable: false
+private fun com.finnvek.startex.ui.screens.WalletDataFreshness(state: com.finnvek.startex.ui.WalletScreenState): kotlin.Unit
+  skippable: true
   restartable: true
   params:
-    - state: RUNTIME (requires runtime check)
+    - state: STABLE (marked @Stable or @Immutable)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.WalletDataSections(state: com.finnvek.startex.ui.PersistedAppState, onRefresh: kotlin.Function0<kotlin.Unit>?): kotlin.Unit
-  skippable: false
+private fun com.finnvek.startex.ui.screens.WalletDataSections(state: com.finnvek.startex.ui.WalletScreenState, onRefresh: kotlin.Function0<kotlin.Unit>?): kotlin.Unit
+  skippable: true
   restartable: true
   params:
-    - state: RUNTIME (requires runtime check)
+    - state: STABLE (marked @Stable or @Immutable)
     - onRefresh: STABLE (function type)
 
 @Composable
@@ -634,7 +705,7 @@ public fun com.finnvek.startex.ui.screens.WalletFlowScreen(state: com.finnvek.st
     - onCancel: STABLE (function type)
 
 @Composable
-public fun com.finnvek.startex.ui.screens.WalletOverlayScreen(overlay: com.finnvek.startex.ui.WalletOverlay, state: com.finnvek.startex.ui.PersistedAppState, transferState: com.finnvek.startex.ui.WalletTransferState, trustedAddresses: kotlin.collections.List<com.finnvek.startex.data.local.TrustedAddressEntity>, onDismiss: kotlin.Function0<kotlin.Unit>, onRefreshBalance: kotlin.Function0<kotlin.Unit>, onPrepareTransfer: kotlin.Function2<kotlin.Long, kotlin.String, kotlin.Unit>, onSubmitTransfer: kotlin.Function1<kotlin.String, kotlin.Unit>, onResetTransfer: kotlin.Function0<kotlin.Unit>, onAddTrustedAddress: kotlin.Function3<kotlin.String, kotlin.String, kotlin.Boolean, kotlin.Unit>, onDeleteTrustedAddress: kotlin.Function2<kotlin.Long, kotlin.String, kotlin.Unit>, onUnlockTrustedAddress: kotlin.Function2<kotlin.Long, kotlin.String, kotlin.Unit>): kotlin.Unit
+public fun com.finnvek.startex.ui.screens.WalletOverlayScreen(overlay: com.finnvek.startex.ui.WalletOverlay, state: com.finnvek.startex.ui.PersistedAppState, transferState: com.finnvek.startex.ui.WalletTransferState, trustedAddresses: kotlin.collections.List<com.finnvek.startex.data.local.TrustedAddressEntity>, onDismiss: kotlin.Function0<kotlin.Unit>, onRefreshBalance: kotlin.Function0<kotlin.Unit>, onPrepareTransfer: kotlin.Function2<kotlin.Long, kotlin.String, kotlin.Unit>, onSubmitTransfer: kotlin.Function1<kotlin.String, kotlin.Unit>, onResetTransfer: kotlin.Function0<kotlin.Unit>, onAddTrustedAddress: kotlin.Function3<kotlin.String, kotlin.String, kotlin.Boolean, kotlin.Unit>, onDeleteTrustedAddress: kotlin.Function2<kotlin.Long, kotlin.String, kotlin.Unit>, onUnlockTrustedAddress: kotlin.Function2<kotlin.Long, kotlin.String, kotlin.Unit>, qrBitmapFactory: kotlin.Function1<kotlin.String, android.graphics.Bitmap?>): kotlin.Unit
   skippable: false
   restartable: true
   params:
@@ -650,6 +721,7 @@ public fun com.finnvek.startex.ui.screens.WalletOverlayScreen(overlay: com.finnv
     - onAddTrustedAddress: STABLE (function type)
     - onDeleteTrustedAddress: STABLE (function type)
     - onUnlockTrustedAddress: STABLE (function type)
+    - qrBitmapFactory: STABLE (function type)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.WalletReviewScreen(state: com.finnvek.startex.ui.WalletSetupState.ReviewWallet, onSave: kotlin.Function1<kotlin.Boolean, kotlin.Unit>, onCancel: kotlin.Function0<kotlin.Unit>): kotlin.Unit
@@ -661,7 +733,7 @@ private fun com.finnvek.startex.ui.screens.WalletReviewScreen(state: com.finnvek
     - onCancel: STABLE (function type)
 
 @Composable
-public fun com.finnvek.startex.ui.screens.WalletScreen(state: com.finnvek.startex.ui.PersistedAppState, onCreateWallet: kotlin.Function0<kotlin.Unit>, onRestoreWallet: kotlin.Function0<kotlin.Unit>, onReceive: kotlin.Function0<kotlin.Unit>, onSend: kotlin.Function0<kotlin.Unit>, onTrustedAddresses: kotlin.Function0<kotlin.Unit>, onReveal: kotlin.Function0<kotlin.Unit>, onLock: kotlin.Function0<kotlin.Unit>, onRefreshBalance: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier): kotlin.Unit
+public fun com.finnvek.startex.ui.screens.WalletScreen(state: com.finnvek.startex.ui.PersistedAppState, onCreateWallet: kotlin.Function0<kotlin.Unit>, onRestoreWallet: kotlin.Function0<kotlin.Unit>, onReceive: kotlin.Function0<kotlin.Unit>, onSend: kotlin.Function0<kotlin.Unit>, onTrustedAddresses: kotlin.Function0<kotlin.Unit>, onReveal: kotlin.Function0<kotlin.Unit>, onLock: kotlin.Function0<kotlin.Unit>, onRefreshBalance: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier, receiveFocusRequester: androidx.compose.ui.focus.FocusRequester?): kotlin.Unit
   skippable: false
   restartable: true
   params:
@@ -675,6 +747,24 @@ public fun com.finnvek.startex.ui.screens.WalletScreen(state: com.finnvek.starte
     - onLock: STABLE (function type)
     - onRefreshBalance: STABLE (function type)
     - modifier: STABLE (marked @Stable or @Immutable)
+    - receiveFocusRequester: STABLE (marked @Stable or @Immutable)
+
+@Composable
+internal fun com.finnvek.startex.ui.screens.WalletScreen(state: com.finnvek.startex.ui.WalletScreenState, onCreateWallet: kotlin.Function0<kotlin.Unit>, onRestoreWallet: kotlin.Function0<kotlin.Unit>, onReceive: kotlin.Function0<kotlin.Unit>, onSend: kotlin.Function0<kotlin.Unit>, onTrustedAddresses: kotlin.Function0<kotlin.Unit>, onReveal: kotlin.Function0<kotlin.Unit>, onLock: kotlin.Function0<kotlin.Unit>, onRefreshBalance: kotlin.Function0<kotlin.Unit>, modifier: androidx.compose.ui.Modifier, receiveFocusRequester: androidx.compose.ui.focus.FocusRequester?): kotlin.Unit
+  skippable: true
+  restartable: true
+  params:
+    - state: STABLE (marked @Stable or @Immutable)
+    - onCreateWallet: STABLE (function type)
+    - onRestoreWallet: STABLE (function type)
+    - onReceive: STABLE (function type)
+    - onSend: STABLE (function type)
+    - onTrustedAddresses: STABLE (function type)
+    - onReveal: STABLE (function type)
+    - onLock: STABLE (function type)
+    - onRefreshBalance: STABLE (function type)
+    - modifier: STABLE (marked @Stable or @Immutable)
+    - receiveFocusRequester: STABLE (marked @Stable or @Immutable)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.WalletSetupActions(state: com.finnvek.startex.ui.PersistedAppState, onCreateWallet: kotlin.Function0<kotlin.Unit>, onRestoreWallet: kotlin.Function0<kotlin.Unit>): kotlin.Unit
@@ -712,18 +802,19 @@ public fun com.finnvek.startex.ui.screens.WatchScreen(candidates: kotlin.collect
     - demoMode: STABLE (primitive type)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.balanceSummary(state: com.finnvek.startex.ui.PersistedAppState): kotlin.String
-  skippable: false
+private fun com.finnvek.startex.ui.screens.balanceSummary(walletBalanceLamports: kotlin.Long?, walletBalanceEur: java.math.BigDecimal?): kotlin.String
+  skippable: true
   restartable: true
   params:
-    - state: RUNTIME (requires runtime check)
+    - walletBalanceLamports: STABLE (class with no mutable properties)
+    - walletBalanceEur: STABLE (known stable type)
 
 @Composable
-private fun com.finnvek.startex.ui.screens.balanceText(state: com.finnvek.startex.ui.PersistedAppState): kotlin.String
-  skippable: false
+private fun com.finnvek.startex.ui.screens.balanceText(walletBalanceLamports: kotlin.Long?): kotlin.String
+  skippable: true
   restartable: true
   params:
-    - state: RUNTIME (requires runtime check)
+    - walletBalanceLamports: STABLE (class with no mutable properties)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.batteryValue(unavailable: kotlin.String): kotlin.String
@@ -731,6 +822,13 @@ private fun com.finnvek.startex.ui.screens.batteryValue(unavailable: kotlin.Stri
   restartable: true
   params:
     - unavailable: STABLE (String is immutable)
+
+@Composable
+private fun com.finnvek.startex.ui.screens.configurationValidationMessage(error: com.finnvek.startex.domain.ConfigurationFieldError): kotlin.String
+  skippable: true
+  restartable: true
+  params:
+    - error: STABLE (class with no mutable properties)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.displayValue(): kotlin.String
@@ -744,6 +842,56 @@ private fun com.finnvek.startex.ui.screens.eurBalanceText(value: java.math.BigDe
   restartable: true
   params:
     - value: STABLE (known stable type)
+
+@Composable
+private fun com.finnvek.startex.ui.screens.eventSeverityLabel(severity: kotlin.String): kotlin.String
+  skippable: true
+  restartable: true
+  params:
+    - severity: STABLE (String is immutable)
+
+@Composable
+private fun com.finnvek.startex.ui.screens.formatAtomicSol(lamports: java.math.BigInteger, signed: kotlin.Boolean): kotlin.String
+  skippable: true
+  restartable: true
+  params:
+    - lamports: STABLE (known stable type)
+    - signed: STABLE (primitive type)
+
+@Composable
+private fun com.finnvek.startex.ui.screens.formatLamports(lamports: kotlin.Long): kotlin.String
+  skippable: true
+  restartable: true
+  params:
+    - lamports: STABLE (primitive type)
+
+@Composable
+private fun com.finnvek.startex.ui.screens.formatSignedSol(lamports: kotlin.Long): kotlin.String
+  skippable: true
+  restartable: true
+  params:
+    - lamports: STABLE (primitive type)
+
+@Composable
+private fun com.finnvek.startex.ui.screens.formatSol(lamports: kotlin.Long): kotlin.String
+  skippable: true
+  restartable: true
+  params:
+    - lamports: STABLE (primitive type)
+
+@Composable
+private fun com.finnvek.startex.ui.screens.formattedTimestamp(timestampMillis: kotlin.Long): kotlin.String
+  skippable: true
+  restartable: true
+  params:
+    - timestampMillis: STABLE (primitive type)
+
+@Composable
+private fun com.finnvek.startex.ui.screens.marketAgeText(seconds: kotlin.Long): kotlin.String
+  skippable: true
+  restartable: true
+  params:
+    - seconds: STABLE (primitive type)
 
 @Composable
 private fun com.finnvek.startex.ui.screens.monitorColor(state: com.finnvek.startex.ui.MonitorState): androidx.compose.ui.graphics.Color

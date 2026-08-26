@@ -4,6 +4,7 @@ import com.finnvek.startex.network.HeliusRpcProvider
 import com.finnvek.startex.network.ProviderError
 import com.finnvek.startex.network.ProviderId
 import com.finnvek.startex.network.ProviderResult
+import com.finnvek.startex.network.RpcSignatureStatus
 import kotlinx.coroutines.delay
 
 enum class ManualTransferStatus {
@@ -89,71 +90,106 @@ internal class ManualTransferConfirmationTracker(
 
         var lastStatus = initialStatus
         while (true) {
-            when (val result = rpcProvider.getSignatureStatus(signature)) {
-                is ProviderResult.Failure -> {
-                    return ManualTransferTrackingResult.ProviderFailure(result.error)
+            val progress = poll(signature, lastValidBlockHeight, lastStatus, onProgress)
+            progress.terminalResult?.let { return it }
+            lastStatus = progress.lastStatus
+            waitForNextPoll()
+        }
+    }
+
+    private suspend fun poll(
+        signature: String,
+        lastValidBlockHeight: Long,
+        lastStatus: ManualTransferStatus?,
+        onProgress: suspend (ManualTransferConfirmation) -> Boolean,
+    ): TrackingProgress =
+        when (val result = rpcProvider.getSignatureStatus(signature)) {
+            is ProviderResult.Failure -> {
+                TrackingProgress(lastStatus, ManualTransferTrackingResult.ProviderFailure(result.error))
+            }
+
+            is ProviderResult.Success -> {
+                val rpcStatus = result.value
+                if (rpcStatus == null) {
+                    missingStatusProgress(lastValidBlockHeight, lastStatus)
+                } else {
+                    observedStatusProgress(rpcStatus, result.receivedAtMillis, lastStatus, onProgress)
                 }
+            }
+        }
 
-                is ProviderResult.Success -> {
-                    val rpcStatus = result.value
-                    if (rpcStatus == null) {
-                        if (
-                            lastStatus != null &&
-                            lastStatus.ordinal > ManualTransferStatus.SUBMITTED.ordinal
-                        ) {
-                            return invalidProviderResponse("signatureStatus.regressed")
-                        }
-                        when (val blockHeight = rpcProvider.getBlockHeight()) {
-                            is ProviderResult.Failure -> {
-                                return ManualTransferTrackingResult.ProviderFailure(blockHeight.error)
-                            }
+    private suspend fun missingStatusProgress(
+        lastValidBlockHeight: Long,
+        lastStatus: ManualTransferStatus?,
+    ): TrackingProgress {
+        if (lastStatus != null && lastStatus.ordinal > ManualTransferStatus.SUBMITTED.ordinal) {
+            return TrackingProgress(lastStatus, invalidProviderResponse("signatureStatus.regressed"))
+        }
+        return when (val blockHeight = rpcProvider.getBlockHeight()) {
+            is ProviderResult.Failure -> {
+                TrackingProgress(lastStatus, ManualTransferTrackingResult.ProviderFailure(blockHeight.error))
+            }
 
-                            is ProviderResult.Success -> {
-                                if (blockHeight.value < 0) {
-                                    return invalidProviderResponse("blockHeight")
-                                }
-                                if (blockHeight.value > lastValidBlockHeight) {
-                                    return ManualTransferTrackingResult.Expired
-                                }
-                            }
-                        }
-                    } else {
-                        if (rpcStatus.slot < 0) return invalidProviderResponse("signatureStatus.slot")
-                        if (rpcStatus.hasError) {
-                            return ManualTransferTrackingResult.ChainRejected(rpcStatus.slot)
-                        }
-                        val observedStatus =
-                            ManualTransferStatus.fromRpc(
-                                value = rpcStatus.confirmationStatus,
-                                confirmations = rpcStatus.confirmations,
-                            )
-                                ?: return invalidProviderResponse("confirmationStatus")
-                        if (lastStatus == null || observedStatus.ordinal > lastStatus.ordinal) {
-                            val persisted =
-                                onProgress(
-                                    ManualTransferConfirmation(
-                                        status = observedStatus,
-                                        slot = rpcStatus.slot,
-                                        observedAtMillis = result.receivedAtMillis,
-                                    ),
-                                )
-                            if (!persisted) return ManualTransferTrackingResult.PersistenceFailed
-                            lastStatus = observedStatus
-                        }
-                        if (lastStatus == ManualTransferStatus.FINALIZED) {
-                            return ManualTransferTrackingResult.Finalized
-                        }
+            is ProviderResult.Success -> {
+                when {
+                    blockHeight.value < 0 -> {
+                        TrackingProgress(lastStatus, invalidProviderResponse("blockHeight"))
+                    }
+
+                    blockHeight.value > lastValidBlockHeight -> {
+                        TrackingProgress(lastStatus, ManualTransferTrackingResult.Expired)
+                    }
+
+                    else -> {
+                        TrackingProgress(lastStatus)
                     }
                 }
             }
-            waitForNextPoll()
         }
+    }
+
+    private suspend fun observedStatusProgress(
+        rpcStatus: RpcSignatureStatus,
+        receivedAtMillis: Long,
+        lastStatus: ManualTransferStatus?,
+        onProgress: suspend (ManualTransferConfirmation) -> Boolean,
+    ): TrackingProgress {
+        if (rpcStatus.slot < 0) {
+            return TrackingProgress(lastStatus, invalidProviderResponse("signatureStatus.slot"))
+        }
+        if (rpcStatus.hasError) {
+            return TrackingProgress(lastStatus, ManualTransferTrackingResult.ChainRejected(rpcStatus.slot))
+        }
+        val observedStatus =
+            ManualTransferStatus.fromRpc(rpcStatus.confirmationStatus, rpcStatus.confirmations)
+                ?: return TrackingProgress(lastStatus, invalidProviderResponse("confirmationStatus"))
+        val nextStatus =
+            if (lastStatus == null || observedStatus.ordinal > lastStatus.ordinal) {
+                val persisted =
+                    onProgress(
+                        ManualTransferConfirmation(observedStatus, rpcStatus.slot, receivedAtMillis),
+                    )
+                if (!persisted) {
+                    return TrackingProgress(lastStatus, ManualTransferTrackingResult.PersistenceFailed)
+                }
+                observedStatus
+            } else {
+                lastStatus
+            }
+        val terminal =
+            ManualTransferTrackingResult.Finalized.takeIf { nextStatus == ManualTransferStatus.FINALIZED }
+        return TrackingProgress(nextStatus, terminal)
     }
 
     private fun invalidProviderResponse(field: String): ManualTransferTrackingResult.ProviderFailure =
         ManualTransferTrackingResult.ProviderFailure(
             ProviderError.InvalidResponse(ProviderId.HELIUS, field),
         )
+
+    private data class TrackingProgress(
+        val lastStatus: ManualTransferStatus?,
+        val terminalResult: ManualTransferTrackingResult? = null,
+    )
 
     private companion object {
         const val CONFIRMATION_POLL_INTERVAL_MILLIS = 2_000L

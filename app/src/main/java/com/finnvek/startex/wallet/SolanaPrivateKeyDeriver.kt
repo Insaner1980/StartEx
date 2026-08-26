@@ -7,14 +7,13 @@ internal fun interface SolanaPrivateKeyDeriver {
     fun derive(entropy: ByteArray): ByteArray
 }
 
-internal object WalletCoreSolanaPrivateKeyDeriver : SolanaPrivateKeyDeriver {
-    override fun derive(entropy: ByteArray): ByteArray {
+internal val WalletCoreSolanaPrivateKeyDeriver =
+    SolanaPrivateKeyDeriver { entropy ->
         TrustWalletCoreNative.ensureLoaded()
-        return HDWallet(entropy, "")
+        HDWallet(entropy, "")
             .getKey(CoinType.SOLANA, SolanaWalletDerivationPath.VALUE)
             .data()
     }
-}
 
 private object TrustWalletCoreNative {
     init {

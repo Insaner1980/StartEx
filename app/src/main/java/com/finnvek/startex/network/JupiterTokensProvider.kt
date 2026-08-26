@@ -52,7 +52,7 @@ data class JupiterTokenSnapshot(
     val updatedAtMillis: Long,
 )
 
-interface JupiterTokensProvider {
+fun interface JupiterTokensProvider {
     suspend fun tokenSnapshot(mint: String): ProviderResult<JupiterTokenSnapshot>
 }
 
@@ -135,78 +135,54 @@ private object JupiterTokensJson {
                     .map { it.jsonObject }
                     .filter { it.optionalTokenString("id") == expectedMint }
             val root = matches.singleOrNull() ?: invalidToken("id")
-            val audit = root.requiredTokenObject("audit")
-            val stats = root.requiredTokenObject("stats5m")
-            val holderCount =
-                root.requiredTokenInt("holderCount").also {
-                    if (it <= 0) invalidToken("holderCount")
-                }
-            val liquidity =
-                root.requiredTokenDecimal("liquidity").also {
-                    if (it.signum() <= 0) invalidToken("liquidity")
-                }
-            val organicScore =
-                root.requiredTokenDecimal("organicScore").also {
-                    if (it < BigDecimal.ZERO || it > MAX_PERCENT) invalidToken("organicScore")
-                }
-            ProviderResult.Success(
-                JupiterTokenSnapshot(
-                    mint = root.requiredTokenString("id"),
-                    name = root.requiredTokenString("name"),
-                    symbol = root.requiredTokenString("symbol"),
-                    decimals =
-                        root.requiredTokenInt("decimals").also {
-                            if (it !in 0..18) invalidToken("decimals")
-                        },
-                    tokenProgram = root.requiredTokenString("tokenProgram"),
-                    holderCount = holderCount,
-                    liquidityUsd = liquidity,
-                    marketCapUsd = root.optionalTokenDecimal("mcap"),
-                    usdPrice =
-                        root.optionalTokenDecimal("usdPrice")?.also {
-                            if (it.signum() <= 0) invalidToken("usdPrice")
-                        },
-                    organicScore = organicScore,
-                    organicScoreLabel = root.requiredTokenString("organicScoreLabel"),
-                    isVerified = root.optionalTokenBoolean("isVerified"),
-                    audit =
-                        JupiterTokenAudit(
-                            isSuspicious = audit.requiredTokenBoolean("isSus"),
-                            mintAuthorityDisabled = audit.requiredTokenBoolean("mintAuthorityDisabled"),
-                            freezeAuthorityDisabled = audit.requiredTokenBoolean("freezeAuthorityDisabled"),
-                            topHoldersPercentage =
-                                audit.requiredTokenDecimal("topHoldersPercentage").also {
-                                    if (it < BigDecimal.ZERO || it > MAX_PERCENT) {
-                                        invalidToken("audit.topHoldersPercentage")
-                                    }
-                                },
-                            developerBalancePercentage =
-                                audit.optionalTokenDecimal("devBalancePercentage")?.also {
-                                    if (it < BigDecimal.ZERO || it > MAX_PERCENT) {
-                                        invalidToken("audit.devBalancePercentage")
-                                    }
-                                },
-                            developerMintCount = audit.optionalTokenInt("devMints"),
-                        ),
-                    stats5m =
-                        JupiterTokenStats(
-                            organicBuyVolumeUsd = stats.requiredNonNegativeDecimal("buyOrganicVolume"),
-                            organicSellVolumeUsd = stats.requiredNonNegativeDecimal("sellOrganicVolume"),
-                            buyCount = stats.requiredNonNegativeInt("numBuys"),
-                            sellCount = stats.requiredNonNegativeInt("numSells"),
-                            traderCount = stats.requiredNonNegativeInt("numTraders"),
-                            organicBuyerCount = stats.optionalTokenInt("numOrganicBuyers"),
-                            netBuyerCount = stats.optionalTokenInt("numNetBuyers"),
-                        ),
-                    updatedAtMillis = Instant.parse(root.requiredTokenString("updatedAt")).toEpochMilli(),
-                ),
-            )
+            ProviderResult.Success(root.toTokenSnapshot())
         } catch (error: InvalidTokenField) {
             ProviderResult.Failure(ProviderError.InvalidResponse(ProviderId.JUPITER, error.field))
         } catch (_: RuntimeException) {
             ProviderResult.Failure(ProviderError.InvalidResponse(ProviderId.JUPITER, "json"))
         }
 }
+
+private fun JsonObject.toTokenSnapshot(): JupiterTokenSnapshot =
+    JupiterTokenSnapshot(
+        mint = requiredTokenString("id"),
+        name = requiredTokenString("name"),
+        symbol = requiredTokenString("symbol"),
+        decimals = requiredTokenIntInRange("decimals", 0..18),
+        tokenProgram = requiredTokenString("tokenProgram"),
+        holderCount = requiredPositiveTokenInt("holderCount"),
+        liquidityUsd = requiredPositiveTokenDecimal("liquidity"),
+        marketCapUsd = optionalTokenDecimal("mcap"),
+        usdPrice = optionalPositiveTokenDecimal("usdPrice"),
+        organicScore = requiredTokenPercentage("organicScore"),
+        organicScoreLabel = requiredTokenString("organicScoreLabel"),
+        isVerified = optionalTokenBoolean("isVerified"),
+        audit = requiredTokenObject("audit").toTokenAudit(),
+        stats5m = requiredTokenObject("stats5m").toTokenStats(),
+        updatedAtMillis = Instant.parse(requiredTokenString("updatedAt")).toEpochMilli(),
+    )
+
+private fun JsonObject.toTokenAudit(): JupiterTokenAudit =
+    JupiterTokenAudit(
+        isSuspicious = requiredTokenBoolean("isSus"),
+        mintAuthorityDisabled = requiredTokenBoolean("mintAuthorityDisabled"),
+        freezeAuthorityDisabled = requiredTokenBoolean("freezeAuthorityDisabled"),
+        topHoldersPercentage = requiredTokenPercentage("topHoldersPercentage", "audit.topHoldersPercentage"),
+        developerBalancePercentage =
+            optionalTokenPercentage("devBalancePercentage", "audit.devBalancePercentage"),
+        developerMintCount = optionalTokenInt("devMints"),
+    )
+
+private fun JsonObject.toTokenStats(): JupiterTokenStats =
+    JupiterTokenStats(
+        organicBuyVolumeUsd = requiredNonNegativeDecimal("buyOrganicVolume"),
+        organicSellVolumeUsd = requiredNonNegativeDecimal("sellOrganicVolume"),
+        buyCount = requiredNonNegativeInt("numBuys"),
+        sellCount = requiredNonNegativeInt("numSells"),
+        traderCount = requiredNonNegativeInt("numTraders"),
+        organicBuyerCount = optionalTokenInt("numOrganicBuyers"),
+        netBuyerCount = optionalTokenInt("numNetBuyers"),
+    )
 
 private class InvalidTokenField(
     val field: String,
@@ -228,6 +204,13 @@ private fun JsonObject.requiredTokenObject(name: String): JsonObject =
 
 private fun JsonObject.requiredTokenInt(name: String): Int = optionalTokenInt(name) ?: invalidToken(name)
 
+private fun JsonObject.requiredTokenIntInRange(
+    name: String,
+    range: IntRange,
+): Int = requiredTokenInt(name).takeIf { it in range } ?: invalidToken(name)
+
+private fun JsonObject.requiredPositiveTokenInt(name: String): Int = requiredTokenInt(name).takeIf { it > 0 } ?: invalidToken(name)
+
 private fun JsonObject.optionalTokenInt(name: String): Int? {
     val element = get(name) ?: return null
     if (element is JsonNull) return null
@@ -242,6 +225,29 @@ private fun JsonObject.requiredNonNegativeInt(name: String): Int =
 private val MAX_PERCENT = BigDecimal("100")
 
 private fun JsonObject.requiredTokenDecimal(name: String): BigDecimal = optionalTokenDecimal(name) ?: invalidToken(name)
+
+private fun JsonObject.requiredPositiveTokenDecimal(name: String): BigDecimal =
+    requiredTokenDecimal(name).takeIf { it.signum() > 0 } ?: invalidToken(name)
+
+private fun JsonObject.optionalPositiveTokenDecimal(name: String): BigDecimal? {
+    val value = optionalTokenDecimal(name) ?: return null
+    return value.takeIf { it.signum() > 0 } ?: invalidToken(name)
+}
+
+private fun JsonObject.requiredTokenPercentage(
+    name: String,
+    errorField: String = name,
+): BigDecimal =
+    requiredTokenDecimal(name).takeIf { it >= BigDecimal.ZERO && it <= MAX_PERCENT }
+        ?: invalidToken(errorField)
+
+private fun JsonObject.optionalTokenPercentage(
+    name: String,
+    errorField: String,
+): BigDecimal? {
+    val value = optionalTokenDecimal(name) ?: return null
+    return value.takeIf { it >= BigDecimal.ZERO && it <= MAX_PERCENT } ?: invalidToken(errorField)
+}
 
 private fun JsonObject.optionalTokenDecimal(name: String): BigDecimal? {
     val element = get(name) ?: return null

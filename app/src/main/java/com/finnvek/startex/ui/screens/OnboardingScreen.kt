@@ -2,6 +2,7 @@ package com.finnvek.startex.ui.screens
 
 import androidx.activity.compose.BackHandler
 import androidx.annotation.StringRes
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
@@ -37,16 +40,21 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.semantics
@@ -91,11 +99,19 @@ fun OnboardingScreen(
     onRequestSecurityMode: (Boolean, Boolean, Boolean) -> Unit,
     onComplete: () -> Unit,
     modifier: Modifier = Modifier,
+    providersFocusRequester: FocusRequester? = null,
 ) {
     var pageIndex by rememberSaveable { mutableIntStateOf(0) }
     var acknowledgedMask by rememberSaveable { mutableIntStateOf(0) }
     val page = setupPages[pageIndex]
     val isAcknowledged = acknowledgedMask and (1 shl pageIndex) != 0
+    val contentScrollState = rememberScrollState()
+    val pageHeadingFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(pageIndex) {
+        contentScrollState.scrollTo(0)
+        pageHeadingFocusRequester.requestFocus()
+    }
 
     BackHandler(enabled = pageIndex > 0) { pageIndex-- }
 
@@ -143,7 +159,7 @@ fun OnboardingScreen(
             modifier =
                 Modifier
                     .weight(1f)
-                    .verticalScroll(rememberScrollState()),
+                    .verticalScroll(contentScrollState),
         ) {
             Spacer(modifier = Modifier.height(20.dp))
             Surface(
@@ -165,7 +181,11 @@ fun OnboardingScreen(
                 text = stringResource(page.title),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.semantics { heading() },
+                modifier =
+                    Modifier
+                        .focusRequester(pageHeadingFocusRequester)
+                        .focusable()
+                        .semantics { heading() },
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
@@ -182,23 +202,30 @@ fun OnboardingScreen(
                 onConfigureProviders = onConfigureProviders,
                 onTrustedAddresses = onTrustedAddresses,
                 onRequestSecurityMode = onRequestSecurityMode,
+                providersFocusRequester = providersFocusRequester,
             )
             Spacer(modifier = Modifier.height(20.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = isAcknowledged,
+                            role = Role.Checkbox,
+                            onValueChange = { checked ->
+                                acknowledgedMask =
+                                    if (checked) {
+                                        acknowledgedMask or (1 shl pageIndex)
+                                    } else {
+                                        acknowledgedMask and (1 shl pageIndex).inv()
+                                    }
+                            },
+                        ).testTag("onboarding_acknowledge"),
             ) {
                 Checkbox(
                     checked = isAcknowledged,
-                    onCheckedChange = { checked ->
-                        acknowledgedMask =
-                            if (checked) {
-                                acknowledgedMask or (1 shl pageIndex)
-                            } else {
-                                acknowledgedMask and (1 shl pageIndex).inv()
-                            }
-                    },
-                    modifier = Modifier.testTag("onboarding_acknowledge"),
+                    onCheckedChange = null,
                 )
                 Text(
                     text =
@@ -213,47 +240,47 @@ fun OnboardingScreen(
                     modifier = Modifier.weight(1f),
                 )
             }
-        }
-        if (!isAcknowledged) {
-            Text(
-                text = stringResource(R.string.setup_acknowledgement_required),
-                style = MaterialTheme.typography.bodySmall,
-                color = StartExAmber,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            if (pageIndex > 0) {
-                OutlinedButton(
-                    onClick = { pageIndex-- },
+            if (!isAcknowledged) {
+                Text(
+                    text = stringResource(R.string.setup_acknowledgement_required),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StartExAmber,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                if (pageIndex > 0) {
+                    OutlinedButton(
+                        onClick = { pageIndex-- },
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .heightIn(min = 48.dp)
+                                .testTag("onboarding_previous"),
+                    ) {
+                        Text(stringResource(R.string.setup_previous))
+                    }
+                }
+                Button(
+                    onClick = {
+                        if (pageIndex == setupPages.lastIndex) onComplete() else pageIndex++
+                    },
+                    enabled = isAcknowledged,
                     modifier =
                         Modifier
                             .weight(1f)
                             .heightIn(min = 48.dp)
-                            .testTag("onboarding_previous"),
+                            .testTag("onboarding_next"),
                 ) {
-                    Text(stringResource(R.string.setup_previous))
+                    Text(
+                        stringResource(
+                            if (pageIndex == setupPages.lastIndex) R.string.setup_finish else R.string.setup_next,
+                        ),
+                    )
                 }
-            }
-            Button(
-                onClick = {
-                    if (pageIndex == setupPages.lastIndex) onComplete() else pageIndex++
-                },
-                enabled = isAcknowledged,
-                modifier =
-                    Modifier
-                        .weight(1f)
-                        .heightIn(min = 48.dp)
-                        .testTag("onboarding_next"),
-            ) {
-                Text(
-                    stringResource(
-                        if (pageIndex == setupPages.lastIndex) R.string.setup_finish else R.string.setup_next,
-                    ),
-                )
             }
         }
     }
@@ -268,6 +295,7 @@ private fun SetupStepContent(
     onConfigureProviders: () -> Unit,
     onTrustedAddresses: () -> Unit,
     onRequestSecurityMode: (Boolean, Boolean, Boolean) -> Unit,
+    providersFocusRequester: FocusRequester?,
 ) {
     when (pageIndex) {
         0 -> {
@@ -295,7 +323,7 @@ private fun SetupStepContent(
         }
 
         4 -> {
-            ProviderSetupCard(state, onConfigureProviders)
+            ProviderSetupCard(state, onConfigureProviders, providersFocusRequester)
         }
 
         5 -> {
@@ -331,7 +359,7 @@ private fun WalletSetupActions(
                 missingText = "",
             )
             Spacer(modifier = Modifier.height(8.dp))
-            AddressText(state.walletAddress)
+            AddressText(state.walletAddress, abbreviated = false)
         } else {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -383,6 +411,7 @@ private fun SecurityModeCard(
 private fun ProviderSetupCard(
     state: PersistedAppState,
     onConfigureProviders: () -> Unit,
+    focusRequester: FocusRequester?,
 ) {
     SectionCard {
         SetupStatusRow(
@@ -405,7 +434,14 @@ private fun ProviderSetupCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 48.dp),
+                    .heightIn(min = 48.dp)
+                    .then(
+                        if (focusRequester != null) {
+                            Modifier.focusRequester(focusRequester)
+                        } else {
+                            Modifier
+                        },
+                    ),
         ) {
             Text(stringResource(R.string.configure_providers))
         }
@@ -475,8 +511,17 @@ private fun RiskLimitCard(state: PersistedAppState) {
 @Composable
 private fun PaperModeCard(mode: TradingMode) {
     SectionCard {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            RadioButton(selected = mode == TradingMode.Paper, onClick = null)
+        Row(
+            modifier =
+                Modifier.selectable(
+                    selected = mode == TradingMode.Paper,
+                    enabled = false,
+                    role = Role.RadioButton,
+                    onClick = {},
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            RadioButton(selected = mode == TradingMode.Paper, onClick = null, enabled = false)
             Column(modifier = Modifier.weight(1f)) {
                 Text(stringResource(R.string.mode_paper), style = MaterialTheme.typography.bodyLarge)
                 Text(
@@ -487,7 +532,16 @@ private fun PaperModeCard(mode: TradingMode) {
             }
         }
         HorizontalDivider(color = StartExOutline)
-        Row(verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier =
+                Modifier.selectable(
+                    selected = false,
+                    enabled = false,
+                    role = Role.RadioButton,
+                    onClick = {},
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             RadioButton(selected = false, onClick = null, enabled = false)
             Column(modifier = Modifier.weight(1f)) {
                 Text(

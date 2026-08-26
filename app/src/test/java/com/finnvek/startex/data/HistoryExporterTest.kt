@@ -129,14 +129,16 @@ class HistoryExporterTest {
         fees: List<FeeRecordEntity> = emptyList(),
     ): AnalysisExport =
         AnalysisExport.fromEntities(
-            sessions = listOf(session()),
-            candidates = candidates,
-            snapshots = snapshots,
-            decisions = decisions,
-            positions = positions,
-            tradeIntents = intents,
-            transactions = transactions,
-            fees = fees,
+            AnalysisExportEntities(
+                sessions = listOf(session()),
+                candidates = candidates,
+                snapshots = snapshots,
+                decisions = decisions,
+                positions = positions,
+                tradeIntents = intents,
+                transactions = transactions,
+                fees = fees,
+            ),
         )
 
     private fun session() =

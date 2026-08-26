@@ -116,17 +116,15 @@ internal fun applyPaperCircuitBreaker(
 }
 
 internal fun DailyPerformanceEntity.paperCircuitBreakerState(): CircuitBreakerState? {
-    val fields =
-        listOf(
-            circuitBreakerReason,
-            circuitBreakerActivatedAtMillis,
-            circuitBreakerResetAfterMillis,
-        )
-    if (fields.all { it == null }) return CircuitBreakerState.inactive()
-    if (fields.any { it == null }) return null
-    val reason = CircuitBreakerReason.entries.firstOrNull { it.name == circuitBreakerReason } ?: return null
-    val activatedAt = Instant.ofEpochMilli(requireNotNull(circuitBreakerActivatedAtMillis))
-    val resetAfter = Instant.ofEpochMilli(requireNotNull(circuitBreakerResetAfterMillis))
+    val reasonName = circuitBreakerReason
+    val activatedAtMillis = circuitBreakerActivatedAtMillis
+    val resetAfterMillis = circuitBreakerResetAfterMillis
+    if (reasonName == null && activatedAtMillis == null && resetAfterMillis == null) {
+        return CircuitBreakerState.inactive()
+    }
+    val reason = CircuitBreakerReason.entries.firstOrNull { it.name == (reasonName ?: return null) } ?: return null
+    val activatedAt = Instant.ofEpochMilli(activatedAtMillis ?: return null)
+    val resetAfter = Instant.ofEpochMilli(resetAfterMillis ?: return null)
     if (resetAfter.isBefore(activatedAt)) return null
     return runCatching {
         CircuitBreakerState(

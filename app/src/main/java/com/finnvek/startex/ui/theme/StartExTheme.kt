@@ -8,6 +8,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
@@ -21,6 +22,7 @@ val StartExGreen = Color(0xFF48D98A)
 val StartExRed = Color(0xFFFF6B73)
 val StartExAmber = Color(0xFFF2B84B)
 val StartExBlue = Color(0xFF6CA6FF)
+internal val StartExControlOutline = Color(0xFF707A86)
 
 private val StartExColors =
     darkColorScheme(
@@ -28,6 +30,8 @@ private val StartExColors =
         onPrimary = Color(0xFF00210F),
         secondary = StartExBlue,
         onSecondary = Color(0xFF001B3E),
+        secondaryContainer = StartExSurfaceRaised,
+        onSecondaryContainer = StartExBlue,
         tertiary = StartExAmber,
         error = StartExRed,
         background = StartExBackground,
@@ -36,19 +40,32 @@ private val StartExColors =
         onSurface = StartExText,
         surfaceVariant = StartExSurfaceRaised,
         onSurfaceVariant = StartExMuted,
-        outline = StartExOutline,
+        outline = StartExControlOutline,
     )
 
 private val StartExTypography =
     Typography(
-        headlineMedium = TextStyle(fontSize = 28.sp, lineHeight = 34.sp, fontWeight = FontWeight.Bold),
-        headlineSmall = TextStyle(fontSize = 23.sp, lineHeight = 30.sp, fontWeight = FontWeight.Bold),
+        headlineMedium =
+            TextStyle(
+                fontSize = 28.sp,
+                lineHeight = 34.sp,
+                fontWeight = FontWeight.Bold,
+                textDirection = TextDirection.ContentOrLtr,
+            ),
+        headlineSmall =
+            TextStyle(
+                fontSize = 23.sp,
+                lineHeight = 30.sp,
+                fontWeight = FontWeight.Bold,
+                textDirection = TextDirection.ContentOrLtr,
+            ),
         titleLarge =
             TextStyle(
                 fontSize = 20.sp,
                 lineHeight = 26.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFeatureSettings = "tnum",
+                textDirection = TextDirection.ContentOrLtr,
             ),
         titleMedium =
             TextStyle(
@@ -56,16 +73,36 @@ private val StartExTypography =
                 lineHeight = 22.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFeatureSettings = "tnum",
+                textDirection = TextDirection.ContentOrLtr,
             ),
-        bodyLarge = TextStyle(fontSize = 16.sp, lineHeight = 24.sp, fontFeatureSettings = "tnum"),
-        bodyMedium = TextStyle(fontSize = 14.sp, lineHeight = 21.sp, fontFeatureSettings = "tnum"),
-        bodySmall = TextStyle(fontSize = 12.sp, lineHeight = 18.sp, fontFeatureSettings = "tnum"),
+        bodyLarge =
+            TextStyle(
+                fontSize = 16.sp,
+                lineHeight = 24.sp,
+                fontFeatureSettings = "tnum",
+                textDirection = TextDirection.ContentOrLtr,
+            ),
+        bodyMedium =
+            TextStyle(
+                fontSize = 14.sp,
+                lineHeight = 21.sp,
+                fontFeatureSettings = "tnum",
+                textDirection = TextDirection.ContentOrLtr,
+            ),
+        bodySmall =
+            TextStyle(
+                fontSize = 12.sp,
+                lineHeight = 18.sp,
+                fontFeatureSettings = "tnum",
+                textDirection = TextDirection.ContentOrLtr,
+            ),
         labelLarge =
             TextStyle(
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFeatureSettings = "tnum",
+                textDirection = TextDirection.ContentOrLtr,
             ),
         labelMedium =
             TextStyle(
@@ -73,6 +110,7 @@ private val StartExTypography =
                 lineHeight = 18.sp,
                 fontWeight = FontWeight.SemiBold,
                 fontFeatureSettings = "tnum",
+                textDirection = TextDirection.ContentOrLtr,
             ),
     )
 

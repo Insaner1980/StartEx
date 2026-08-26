@@ -147,13 +147,23 @@ class AndroidDeviceHealthProvider(
             when (status) {
                 BatteryManager.BATTERY_STATUS_CHARGING,
                 BatteryManager.BATTERY_STATUS_FULL,
-                -> if (plugged != 0) true else return null
+                -> {
+                    if (plugged == 0) return null
+                    true
+                }
 
-                BatteryManager.BATTERY_STATUS_DISCHARGING -> if (plugged == 0) false else return null
+                BatteryManager.BATTERY_STATUS_DISCHARGING -> {
+                    if (plugged != 0) return null
+                    false
+                }
 
-                BatteryManager.BATTERY_STATUS_NOT_CHARGING -> false
+                BatteryManager.BATTERY_STATUS_NOT_CHARGING -> {
+                    false
+                }
 
-                else -> return null
+                else -> {
+                    return null
+                }
             }
         return BatteryFacts(
             levelPercent = ((level.toLong() * 100L) / scale).toInt().coerceIn(0, 100),

@@ -34,6 +34,8 @@ enum class SolTransferFailureReason {
     BLOCKHASH_LOOKUP_FAILED,
     FEE_LOOKUP_FAILED,
     FEE_CAP_EXCEEDED,
+    BLOCKHASH_EXPIRED,
+    FEE_CHANGED,
     TRANSACTION_CONSTRUCTION_FAILED,
     SIMULATION_FAILED,
     SIMULATION_REJECTED,
@@ -88,6 +90,8 @@ class PreparedSolTransfer internal constructor(
     val recentBlockhash: String,
     val lastValidBlockHeight: Long,
     val estimatedFeeLamports: Long,
+    val feeCapLamports: Long,
+    val reserveLamports: Long,
     val simulatedTransactionBase64: String,
     val idempotencyKey: String,
 ) {
@@ -170,6 +174,8 @@ class WalletTransferCoordinator(
         return try {
             val message = extractLegacyMessage(serialized)
             try {
+                // Preparation and authenticated send independently repeat safety checks by design.
+                // CPD-OFF
                 val feeMessageBase64 = Base64.getEncoder().encodeToString(message)
                 val fee =
                     when (val result = rpcProvider.getFeeForMessage(feeMessageBase64)) {
@@ -213,6 +219,8 @@ class WalletTransferCoordinator(
                                             recentBlockhash = latestBlockhash.blockhash,
                                             lastValidBlockHeight = latestBlockhash.lastValidBlockHeight,
                                             estimatedFeeLamports = fee.lamports,
+                                            feeCapLamports = feeCapLamports,
+                                            reserveLamports = reserveLamports,
                                             simulatedTransactionBase64 = simulatedTransactionBase64,
                                             idempotencyKey = sha256Hex(message),
                                         ),
@@ -222,6 +230,7 @@ class WalletTransferCoordinator(
                         }
                     }
                 }
+                // CPD-ON
             } finally {
                 message.fill(0)
             }
@@ -299,6 +308,8 @@ class WalletTransferCoordinator(
         if (!prepared.consume()) {
             return failure(SolTransferFailureReason.PREPARED_TRANSFER_CONSUMED)
         }
+
+        revalidate(prepared)?.let { return it }
 
         val simulated =
             try {
@@ -378,6 +389,107 @@ class WalletTransferCoordinator(
             }
         } finally {
             simulated.fill(0)
+        }
+    }
+
+    private suspend fun revalidate(prepared: PreparedSolTransfer): SolTransferResult.Failure? {
+        validateDestination(prepared.destinationAddress)?.let { return it }
+        revalidateBlockHeight(prepared.lastValidBlockHeight)?.let { return it }
+        val feeMessageBase64 =
+            try {
+                messageBase64(prepared)
+            } catch (_: RuntimeException) {
+                return failure(SolTransferFailureReason.TRANSACTION_CONSTRUCTION_FAILED)
+            }
+        revalidateFee(prepared, feeMessageBase64)?.let { return it }
+        validateBalance(
+            prepared.sourceAddress,
+            prepared.amountLamports,
+            prepared.estimatedFeeLamports,
+            prepared.reserveLamports,
+        )?.let { return it }
+        return revalidateSimulation(prepared.simulatedTransactionBase64)
+    }
+
+    private suspend fun revalidateBlockHeight(lastValidBlockHeight: Long): SolTransferResult.Failure? =
+        when (val blockHeight = rpcProvider.getBlockHeight()) {
+            is ProviderResult.Failure -> {
+                failure(SolTransferFailureReason.BLOCKHASH_LOOKUP_FAILED, blockHeight.error)
+            }
+
+            is ProviderResult.Success -> {
+                when {
+                    blockHeight.value < 0 -> failure(SolTransferFailureReason.BLOCKHASH_LOOKUP_FAILED)
+                    blockHeight.value > lastValidBlockHeight -> failure(SolTransferFailureReason.BLOCKHASH_EXPIRED)
+                    else -> null
+                }
+            }
+        }
+
+    private suspend fun revalidateFee(
+        prepared: PreparedSolTransfer,
+        feeMessageBase64: String,
+    ): SolTransferResult.Failure? =
+        when (val result = rpcProvider.getFeeForMessage(feeMessageBase64)) {
+            is ProviderResult.Failure -> {
+                failure(SolTransferFailureReason.FEE_LOOKUP_FAILED, result.error)
+            }
+
+            is ProviderResult.Success -> {
+                when {
+                    result.value == null || result.value.lamports < 0 || result.value.slot < 0 -> {
+                        failure(SolTransferFailureReason.FEE_LOOKUP_FAILED)
+                    }
+
+                    result.value.lamports > prepared.feeCapLamports -> {
+                        failure(SolTransferFailureReason.FEE_CAP_EXCEEDED)
+                    }
+
+                    result.value.lamports != prepared.estimatedFeeLamports -> {
+                        failure(SolTransferFailureReason.FEE_CHANGED)
+                    }
+
+                    else -> {
+                        null
+                    }
+                }
+            }
+        }
+
+    private suspend fun revalidateSimulation(simulatedTransactionBase64: String): SolTransferResult.Failure? =
+        when (val simulation = rpcProvider.simulateTransaction(simulatedTransactionBase64)) {
+            is ProviderResult.Failure -> {
+                failure(SolTransferFailureReason.SIMULATION_FAILED, simulation.error)
+            }
+
+            is ProviderResult.Success -> {
+                when (val value = simulation.value) {
+                    is RpcSimulation.Rejected -> {
+                        failure(SolTransferFailureReason.SIMULATION_REJECTED)
+                    }
+
+                    is RpcSimulation.Succeeded -> {
+                        if (value.slot < 0 || value.unitsConsumed?.let { it < 0 } == true) {
+                            failure(SolTransferFailureReason.SIMULATION_FAILED)
+                        } else {
+                            null
+                        }
+                    }
+                }
+            }
+        }
+
+    private fun messageBase64(prepared: PreparedSolTransfer): String {
+        val serialized = Base64.getDecoder().decode(prepared.simulatedTransactionBase64)
+        return try {
+            val message = extractLegacyMessage(serialized)
+            try {
+                Base64.getEncoder().encodeToString(message)
+            } finally {
+                message.fill(0)
+            }
+        } finally {
+            serialized.fill(0)
         }
     }
 

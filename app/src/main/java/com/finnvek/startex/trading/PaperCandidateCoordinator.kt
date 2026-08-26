@@ -312,24 +312,24 @@ class PaperCandidateCoordinator(
 
     private fun validateConfiguration(request: PaperCandidateRequest): Set<String> =
         buildSet {
-            if (request.sessionId.isBlank() || request.candidate.mint.isBlank()) add("CONFIGURATION_INVALID")
-            if (request.strategy.requiredSnapshotCount !in 2..MAXIMUM_OBSERVATIONS) {
-                add("OBSERVATION_COUNT_INVALID")
-            }
-            if (
+            addIfInvalid(request.sessionId.isBlank() || request.candidate.mint.isBlank(), "CONFIGURATION_INVALID")
+            addIfInvalid(
+                request.strategy.requiredSnapshotCount !in 2..MAXIMUM_OBSERVATIONS,
+                "OBSERVATION_COUNT_INVALID",
+            )
+            addIfInvalid(
                 request.strategy.minimumObservationMillis <= 0 ||
-                request.strategy.minimumObservationMillis > request.strategy.maximumCandidateAgeMillis
-            ) {
-                add("OBSERVATION_INTERVAL_INVALID")
-            }
-            if (request.risk.maximumOpenPositions !in 1..2) add("OPEN_POSITION_LIMIT_INVALID")
-            if (request.risk.maximumTradeLamports <= 0) add("TRADE_AMOUNT_INVALID")
-            if (request.risk.maximumSlippageBps !in 0..10_000) add("SLIPPAGE_CAP_INVALID")
-            if (request.risk.maximumPriorityFeeLamports < 0) add("PRIORITY_FEE_CAP_INVALID")
-            if (request.risk.maximumTransactionCostLamports < 0) add("TRANSACTION_COST_CAP_INVALID")
-            if (request.risk.maximumFeePercentBps !in 0..10_000) add("FEE_CAP_INVALID")
-            if (request.strategy.minimumEntryScore !in 0..100) add("SCORE_CONFIGURATION_INVALID")
-            if (!request.strategy.exitRulesValid()) add("EXIT_RULES_INVALID")
+                    request.strategy.minimumObservationMillis > request.strategy.maximumCandidateAgeMillis,
+                "OBSERVATION_INTERVAL_INVALID",
+            )
+            addIfInvalid(request.risk.maximumOpenPositions !in 1..2, "OPEN_POSITION_LIMIT_INVALID")
+            addIfInvalid(request.risk.maximumTradeLamports <= 0, "TRADE_AMOUNT_INVALID")
+            addIfInvalid(request.risk.maximumSlippageBps !in 0..10_000, "SLIPPAGE_CAP_INVALID")
+            addIfInvalid(request.risk.maximumPriorityFeeLamports < 0, "PRIORITY_FEE_CAP_INVALID")
+            addIfInvalid(request.risk.maximumTransactionCostLamports < 0, "TRANSACTION_COST_CAP_INVALID")
+            addIfInvalid(request.risk.maximumFeePercentBps !in 0..10_000, "FEE_CAP_INVALID")
+            addIfInvalid(request.strategy.minimumEntryScore !in 0..100, "SCORE_CONFIGURATION_INVALID")
+            addIfInvalid(!request.strategy.exitRulesValid(), "EXIT_RULES_INVALID")
         }
 
     private suspend fun collectObservations(request: PaperCandidateRequest): ObservationCollection {
@@ -338,98 +338,99 @@ class PaperCandidateCoordinator(
         val interval = observationInterval(request.strategy)
         for (index in 0 until request.strategy.requiredSnapshotCount) {
             if (index > 0) delay.wait(interval)
-            val tokenResult = tokens.tokenSnapshot(request.candidate.mint)
-            val token =
-                when (tokenResult) {
-                    is ProviderResult.Failure -> {
-                        reasons += "TOKEN_${tokenResult.error.stableCode()}"
-                        continue
-                    }
-
-                    is ProviderResult.Success -> {
-                        tokenResult.value
-                    }
-                }
-            val sourceProof = safetyProofs.proof(request.candidate.mint, token)
-            val buyResult = quotes.order(buyRequest(request))
-            val buy =
-                when (buyResult) {
-                    is ProviderResult.Failure -> {
-                        reasons += "BUY_QUOTE_${buyResult.error.stableCode()}"
-                        null
-                    }
-
-                    is ProviderResult.Success -> {
-                        buyResult.value
-                    }
-                }
-            val sell =
-                buy?.outAmountAtomic?.toLongOrNull()?.takeIf { it > 0 }?.let { amount ->
-                    when (val sellResult = quotes.order(sellRequest(request, amount))) {
-                        is ProviderResult.Failure -> {
-                            reasons += "SELL_QUOTE_${sellResult.error.stableCode()}"
-                            null
-                        }
-
-                        is ProviderResult.Success -> {
-                            sellResult.value
-                        }
-                    }
-                } ?: run {
-                    if (buy != null) reasons += "SELL_AMOUNT_UNSUPPORTED"
-                    null
-                }
-            val quotePairValidated = buy != null && sell != null && validatedQuotePair(request, buy, sell)
-            val proof =
-                sourceProof
-                    ?.copy(
-                        quoteSemanticsValidated = false,
-                        unsupportedRouteBehavior = true,
-                    )?.let { unvalidated ->
-                        if (quotePairValidated) {
-                            unvalidated.copy(
-                                quoteSemanticsValidated = true,
-                                unsupportedRouteBehavior = false,
-                            )
-                        } else {
-                            unvalidated
-                        }
-                    }
-            val capturedAt = clock.nowMillis()
-            val snapshotId =
-                persistence.persistSnapshot(
-                    token.toEntity(
-                        mint = request.candidate.mint,
-                        proof = proof,
-                        buy = buy,
-                        sell = sell,
-                        quotePairValidated = quotePairValidated,
-                        capturedAtMillis = capturedAt,
-                    ),
-                )
-            if (buy != null && sell != null && quotePairValidated) {
-                observations +=
-                    PaperObservation(
-                        snapshotId = snapshotId.toString(),
-                        capturedAtMillis = capturedAt,
-                        token = token,
-                        proof = proof,
-                        buy = buy,
-                        sell = sell,
-                    )
-            } else if (buy != null && sell != null) {
-                reasons += "QUOTE_PAIR_UNVALIDATED"
-            }
+            collectObservation(request, reasons)?.let(observations::add)
         }
-        if (
-            observations.size >= 2 &&
-            observations.last().capturedAtMillis - observations.first().capturedAtMillis <
-            request.strategy.minimumObservationMillis
-        ) {
-            reasons += "OBSERVATION_WINDOW_TOO_SHORT"
-        }
+        reasons.addIfInvalid(observationWindowTooShort(request, observations), "OBSERVATION_WINDOW_TOO_SHORT")
         return ObservationCollection(observations, reasons)
     }
+
+    private suspend fun collectObservation(
+        request: PaperCandidateRequest,
+        reasons: MutableSet<String>,
+    ): PaperObservation? {
+        val token = tokenSnapshot(request, reasons) ?: return null
+        val sourceProof = safetyProofs.proof(request.candidate.mint, token)
+        val buy = quote(buyRequest(request), "BUY_QUOTE", reasons)
+        val sell = sellQuote(request, buy, reasons)
+        val quotePairValidated = buy != null && sell != null && validatedQuotePair(request, buy, sell)
+        val proof = validatedProof(sourceProof, quotePairValidated)
+        val capturedAt = clock.nowMillis()
+        val snapshotId =
+            persistence.persistSnapshot(
+                token.toEntity(
+                    mint = request.candidate.mint,
+                    proof = proof,
+                    buy = buy,
+                    sell = sell,
+                    quotePairValidated = quotePairValidated,
+                    capturedAtMillis = capturedAt,
+                ),
+            )
+        if (buy == null || sell == null) return null
+        if (!quotePairValidated) {
+            reasons += "QUOTE_PAIR_UNVALIDATED"
+            return null
+        }
+        return PaperObservation(snapshotId.toString(), capturedAt, token, proof, buy, sell)
+    }
+
+    private suspend fun tokenSnapshot(
+        request: PaperCandidateRequest,
+        reasons: MutableSet<String>,
+    ): JupiterTokenSnapshot? =
+        when (val result = tokens.tokenSnapshot(request.candidate.mint)) {
+            is ProviderResult.Failure -> {
+                reasons += "TOKEN_${result.error.stableCode()}"
+                null
+            }
+
+            is ProviderResult.Success -> {
+                result.value
+            }
+        }
+
+    private suspend fun quote(
+        request: SwapOrderRequest,
+        failurePrefix: String,
+        reasons: MutableSet<String>,
+    ): SwapOrder? =
+        when (val result = quotes.order(request)) {
+            is ProviderResult.Failure -> {
+                reasons += "${failurePrefix}_${result.error.stableCode()}"
+                null
+            }
+
+            is ProviderResult.Success -> {
+                result.value
+            }
+        }
+
+    private suspend fun sellQuote(
+        request: PaperCandidateRequest,
+        buy: SwapOrder?,
+        reasons: MutableSet<String>,
+    ): SwapOrder? {
+        val amount = buy?.outAmountAtomic?.toLongOrNull()?.takeIf { it > 0 }
+        if (buy != null && amount == null) reasons += "SELL_AMOUNT_UNSUPPORTED"
+        return amount?.let { quote(sellRequest(request, it), "SELL_QUOTE", reasons) }
+    }
+
+    private fun validatedProof(
+        proof: PaperCandidateSafetyProof?,
+        quotePairValidated: Boolean,
+    ): PaperCandidateSafetyProof? =
+        proof?.copy(
+            quoteSemanticsValidated = quotePairValidated,
+            unsupportedRouteBehavior = !quotePairValidated,
+        )
+
+    private fun observationWindowTooShort(
+        request: PaperCandidateRequest,
+        observations: List<PaperObservation>,
+    ): Boolean =
+        observations.size >= 2 &&
+            observations.last().capturedAtMillis - observations.first().capturedAtMillis <
+            request.strategy.minimumObservationMillis
 
     private fun observationInterval(strategy: StrategyConfigEntity): Duration {
         val gaps = strategy.requiredSnapshotCount - 1L
@@ -469,40 +470,52 @@ class PaperCandidateCoordinator(
         sell: SwapOrder,
     ): Boolean {
         if (!buy.matchesBuy(request) || !sell.matchesSell(request, buy)) return false
-        if (buy.unsignedTransactionBase64 != null || sell.unsignedTransactionBase64 != null) return false
-        if (buy.router !in ALLOWED_QUOTE_ROUTERS || sell.router !in ALLOWED_QUOTE_ROUTERS) return false
-        if (buy.mode !in ALLOWED_QUOTE_MODES || sell.mode !in ALLOWED_QUOTE_MODES) return false
-        if (buy.requestId.isBlank() || sell.requestId.isBlank()) return false
-        val buySlippage = buy.slippageBps ?: return false
-        val sellSlippage = sell.slippageBps ?: return false
-        if (
-            buySlippage !in 0..request.risk.maximumSlippageBps ||
-            sellSlippage !in 0..request.risk.maximumSlippageBps
-        ) {
-            return false
-        }
-        if (buy.feeBps > request.risk.maximumFeePercentBps || sell.feeBps > request.risk.maximumFeePercentBps) {
-            return false
-        }
-        if (
-            buy.prioritizationFeeLamports > request.risk.maximumPriorityFeeLamports ||
-            sell.prioritizationFeeLamports > request.risk.maximumPriorityFeeLamports
-        ) {
-            return false
-        }
+        if (!quoteMetadataValid(buy, sell)) return false
+        if (!quoteLimitsValid(request, buy, sell)) return false
         val buyCosts = quoteCosts(buy, request.candidate.mint) ?: return false
         val sellCosts = quoteCosts(sell, request.candidate.mint) ?: return false
-        if (
-            buyCosts.totalSolLamports > request.risk.maximumTransactionCostLamports ||
-            sellCosts.totalSolLamports > request.risk.maximumTransactionCostLamports
-        ) {
-            return false
-        }
+        if (!quoteCostsValid(request, buyCosts, sellCosts)) return false
         val sellOutput = sell.outAmountAtomic.toLongOrNull() ?: return false
         return sellOutput >= request.strategy.minimumSellOutputLamports &&
             priceImpactBps(buy.priceImpactPercent) != null &&
             priceImpactBps(sell.priceImpactPercent) != null
     }
+
+    private fun quoteMetadataValid(
+        buy: SwapOrder,
+        sell: SwapOrder,
+    ): Boolean =
+        buy.unsignedTransactionBase64 == null &&
+            sell.unsignedTransactionBase64 == null &&
+            buy.router in ALLOWED_QUOTE_ROUTERS &&
+            sell.router in ALLOWED_QUOTE_ROUTERS &&
+            buy.mode in ALLOWED_QUOTE_MODES &&
+            sell.mode in ALLOWED_QUOTE_MODES &&
+            buy.requestId.isNotBlank() &&
+            sell.requestId.isNotBlank()
+
+    private fun quoteLimitsValid(
+        request: PaperCandidateRequest,
+        buy: SwapOrder,
+        sell: SwapOrder,
+    ): Boolean {
+        val buySlippage = buy.slippageBps ?: return false
+        val sellSlippage = sell.slippageBps ?: return false
+        return buySlippage in 0..request.risk.maximumSlippageBps &&
+            sellSlippage in 0..request.risk.maximumSlippageBps &&
+            buy.feeBps <= request.risk.maximumFeePercentBps &&
+            sell.feeBps <= request.risk.maximumFeePercentBps &&
+            buy.prioritizationFeeLamports <= request.risk.maximumPriorityFeeLamports &&
+            sell.prioritizationFeeLamports <= request.risk.maximumPriorityFeeLamports
+    }
+
+    private fun quoteCostsValid(
+        request: PaperCandidateRequest,
+        buy: QuoteCosts,
+        sell: QuoteCosts,
+    ): Boolean =
+        buy.totalSolLamports <= request.risk.maximumTransactionCostLamports &&
+            sell.totalSolLamports <= request.risk.maximumTransactionCostLamports
 
     private fun validateObservations(
         request: PaperCandidateRequest,
@@ -510,59 +523,94 @@ class PaperCandidateCoordinator(
     ): Set<String> =
         buildSet {
             val first = observations.first()
-            for (observation in observations) {
-                val proof = observation.proof ?: continue
-                val token = observation.token
-                if (
-                    token.mint != request.candidate.mint ||
-                    token.mint != first.token.mint ||
-                    token.decimals != first.token.decimals ||
-                    token.tokenProgram != first.token.tokenProgram ||
-                    token.name != first.token.name ||
-                    token.symbol != first.token.symbol
-                ) {
-                    add("TOKEN_DATA_INCONSISTENT")
-                }
-                if (
-                    token.audit.developerBalancePercentage == null ||
-                    token.audit.developerMintCount == null ||
-                    token.stats5m.organicBuyerCount == null ||
-                    token.stats5m.netBuyerCount == null ||
-                    token.usdPrice == null ||
-                    token.updatedAtMillis > observation.capturedAtMillis ||
-                    observation.capturedAtMillis - token.updatedAtMillis > request.risk.minimumDataFreshnessMillis
-                ) {
-                    add("TOKEN_DATA_INCOMPLETE_OR_STALE")
-                }
-                if (proof.liquidity.value <= 0) add("LIQUIDITY_DATA_INVALID")
-                if (request.candidate.discoveredAtMillis > observation.capturedAtMillis) {
-                    add("CANDIDATE_TIME_INVALID")
-                }
-                if (!observation.buy.matchesBuy(request) || !observation.sell.matchesSell(request, observation.buy)) {
-                    add("QUOTE_DATA_INCONSISTENT")
-                }
-                if (
-                    observation.buy.slippageBps == null ||
-                    observation.sell.slippageBps == null ||
-                    observation.buy.slippageBps !in 0..request.risk.maximumSlippageBps ||
-                    observation.sell.slippageBps !in 0..request.risk.maximumSlippageBps
-                ) {
-                    add("SLIPPAGE_CAP_EXCEEDED")
-                }
-                val sellOutput = observation.sell.outAmountAtomic.toLongOrNull()
-                if (sellOutput == null || sellOutput < request.strategy.minimumSellOutputLamports) {
-                    add("SELL_OUTPUT_INSUFFICIENT")
-                }
-                if (
-                    quoteCosts(observation.buy, request.candidate.mint) == null ||
-                    quoteCosts(observation.sell, request.candidate.mint) == null ||
-                    priceImpactBps(observation.buy.priceImpactPercent) == null ||
-                    priceImpactBps(observation.sell.priceImpactPercent) == null
-                ) {
-                    add("QUOTE_COST_DATA_INVALID")
-                }
-            }
+            observations.forEach { observation -> validateObservation(request, first, observation, this) }
         }
+
+    private fun validateObservation(
+        request: PaperCandidateRequest,
+        first: PaperObservation,
+        observation: PaperObservation,
+        reasons: MutableSet<String>,
+    ) {
+        val proof = observation.proof ?: return
+        reasons.addIfInvalid(!tokenDataConsistent(request, first, observation), "TOKEN_DATA_INCONSISTENT")
+        reasons.addIfInvalid(!tokenDataComplete(request, observation), "TOKEN_DATA_INCOMPLETE_OR_STALE")
+        reasons.addIfInvalid(proof.liquidity.value <= 0, "LIQUIDITY_DATA_INVALID")
+        reasons.addIfInvalid(
+            request.candidate.discoveredAtMillis > observation.capturedAtMillis,
+            "CANDIDATE_TIME_INVALID",
+        )
+        reasons.addIfInvalid(!quoteDataConsistent(request, observation), "QUOTE_DATA_INCONSISTENT")
+        reasons.addIfInvalid(!slippageWithinCap(request, observation), "SLIPPAGE_CAP_EXCEEDED")
+        reasons.addIfInvalid(!sellOutputSufficient(request, observation), "SELL_OUTPUT_INSUFFICIENT")
+        reasons.addIfInvalid(!quoteCostDataValid(request, observation), "QUOTE_COST_DATA_INVALID")
+    }
+
+    private fun tokenDataConsistent(
+        request: PaperCandidateRequest,
+        first: PaperObservation,
+        observation: PaperObservation,
+    ): Boolean =
+        observation.token.run {
+            mint == request.candidate.mint &&
+                mint == first.token.mint &&
+                decimals == first.token.decimals &&
+                tokenProgram == first.token.tokenProgram &&
+                name == first.token.name &&
+                symbol == first.token.symbol
+        }
+
+    private fun tokenDataComplete(
+        request: PaperCandidateRequest,
+        observation: PaperObservation,
+    ): Boolean =
+        observation.token.run {
+            audit.developerBalancePercentage != null &&
+                audit.developerMintCount != null &&
+                stats5m.organicBuyerCount != null &&
+                stats5m.netBuyerCount != null &&
+                usdPrice != null &&
+                updatedAtMillis <= observation.capturedAtMillis &&
+                observation.capturedAtMillis - updatedAtMillis <= request.risk.minimumDataFreshnessMillis
+        }
+
+    private fun quoteDataConsistent(
+        request: PaperCandidateRequest,
+        observation: PaperObservation,
+    ): Boolean = observation.buy.matchesBuy(request) && observation.sell.matchesSell(request, observation.buy)
+
+    private fun slippageWithinCap(
+        request: PaperCandidateRequest,
+        observation: PaperObservation,
+    ): Boolean =
+        observation.buy.slippageBps != null &&
+            observation.sell.slippageBps != null &&
+            observation.buy.slippageBps in 0..request.risk.maximumSlippageBps &&
+            observation.sell.slippageBps in 0..request.risk.maximumSlippageBps
+
+    private fun sellOutputSufficient(
+        request: PaperCandidateRequest,
+        observation: PaperObservation,
+    ): Boolean =
+        observation.sell.outAmountAtomic
+            .toLongOrNull()
+            ?.let { it >= request.strategy.minimumSellOutputLamports } == true
+
+    private fun quoteCostDataValid(
+        request: PaperCandidateRequest,
+        observation: PaperObservation,
+    ): Boolean =
+        quoteCosts(observation.buy, request.candidate.mint) != null &&
+            quoteCosts(observation.sell, request.candidate.mint) != null &&
+            priceImpactBps(observation.buy.priceImpactPercent) != null &&
+            priceImpactBps(observation.sell.priceImpactPercent) != null
+
+    private fun MutableSet<String>.addIfInvalid(
+        invalid: Boolean,
+        reason: String,
+    ) {
+        if (invalid) add(reason)
+    }
 
     private fun evaluateCandidate(
         request: PaperCandidateRequest,
@@ -581,6 +629,8 @@ class PaperCandidateCoordinator(
                 ?: return null
         val feeRatioBps = feeRatioBps(request.risk.maximumTradeLamports, buyCosts, sellCosts) ?: return null
         val priceIncrease = percentageIncrease(first.token.usdPrice, last.token.usdPrice) ?: return null
+        val firstOrganicBuyerCount = requireNotNull(first.token.stats5m.organicBuyerCount)
+        val lastOrganicBuyerCount = requireNotNull(last.token.stats5m.organicBuyerCount)
         val dataAge = Duration.ofMillis(last.capturedAtMillis - last.token.updatedAtMillis)
         val tokenAge = Duration.ofMillis(last.capturedAtMillis - request.candidate.discoveredAtMillis)
         val program = last.token.tokenProgram.toDomainTokenProgram()
@@ -598,10 +648,8 @@ class PaperCandidateCoordinator(
                 creatorHoldingPercent = last.token.audit.developerBalancePercentage,
                 topHolderPercent = last.token.audit.topHoldersPercentage,
                 holderCount = last.token.holderCount,
-                uniqueBuyers = requireNotNull(last.token.stats5m.organicBuyerCount),
-                buyerGrowthPositive =
-                    requireNotNull(last.token.stats5m.organicBuyerCount) >
-                        requireNotNull(first.token.stats5m.organicBuyerCount),
+                uniqueBuyers = lastOrganicBuyerCount,
+                buyerGrowthPositive = lastOrganicBuyerCount > firstOrganicBuyerCount,
                 buyCount =
                     last.token.stats5m.buyCount
                         .toBigDecimal(),
@@ -721,7 +769,7 @@ class PaperCandidateCoordinator(
 
     @Suppress("LongMethod")
     private suspend fun executePaperBuy(
-        request: PaperCandidateRequest,
+        candidateRequest: PaperCandidateRequest,
         observations: List<PaperObservation>,
         evaluation: PaperEvaluation,
         controller: HardRiskController,
@@ -733,9 +781,10 @@ class PaperCandidateCoordinator(
             PaperExecutionEngine(
                 quoteProvider =
                     object : PaperQuoteProvider {
-                        override fun refreshBuy(requestForEngine: PaperBuyRequest): PaperBuyQuote? =
+                        override fun refreshBuy(request: PaperBuyRequest): PaperBuyQuote? =
                             runBlocking {
-                                val roundTrip = refreshRoundTrip(request, initialCosts) ?: return@runBlocking null
+                                val roundTrip =
+                                    refreshRoundTrip(candidateRequest, initialCosts) ?: return@runBlocking null
                                 refreshed = roundTrip
                                 PaperBuyQuote(
                                     expectedOutputAtomic = roundTrip.buy.outAmountAtomic.toBigInteger(),
@@ -750,7 +799,7 @@ class PaperCandidateCoordinator(
         val outcome =
             engine.executeBuy(
                 PaperBuyRequest(
-                    input = Lamports.of(request.risk.maximumTradeLamports),
+                    input = Lamports.of(candidateRequest.risk.maximumTradeLamports),
                     tokenDecimals = initial.token.decimals,
                     initialQuote =
                         PaperBuyQuote(
@@ -761,12 +810,12 @@ class PaperCandidateCoordinator(
                 ),
                 PaperExecutionConfig(
                     decisionToSubmitLatency = decisionToSubmitLatency,
-                    executionSlippageBps = request.risk.maximumSlippageBps,
+                    executionSlippageBps = candidateRequest.risk.maximumSlippageBps,
                 ),
             )
         if (outcome is PaperBuyOutcome.Rejected) {
             return reject(
-                request,
+                candidateRequest,
                 setOf("PAPER_${outcome.reason.name}"),
                 observations,
                 evaluation.decision.score,
@@ -776,7 +825,7 @@ class PaperCandidateCoordinator(
         require(outcome is PaperBuyOutcome.Filled)
         val refreshedQuotes =
             refreshed ?: return reject(
-                request,
+                candidateRequest,
                 setOf("PAPER_REFRESH_MISSING"),
                 observations,
                 evaluation.decision.score,
@@ -784,19 +833,19 @@ class PaperCandidateCoordinator(
             )
         val latestFacts =
             riskFacts.facts(
-                request.sessionId,
-                request.risk,
+                candidateRequest.sessionId,
+                candidateRequest.risk,
                 Instant.ofEpochMilli(clock.nowMillis()),
             ) ?: return reject(
-                request,
+                candidateRequest,
                 setOf("RISK_FACTS_INCOMPLETE"),
                 observations,
                 evaluation.decision.score,
                 evaluation,
             )
         val finalQuotes =
-            refreshActualFullSell(request, outcome, refreshedQuotes) ?: return reject(
-                request,
+            refreshActualFullSell(candidateRequest, outcome, refreshedQuotes) ?: return reject(
+                candidateRequest,
                 setOf("FULL_SELL_QUOTE_UNAVAILABLE"),
                 observations,
                 evaluation.decision.score,
@@ -807,8 +856,8 @@ class PaperCandidateCoordinator(
                 val finalNow = Instant.ofEpochMilli(clock.nowMillis())
                 val currentFacts =
                     persistence.currentRiskFacts(
-                        sessionId = request.sessionId,
-                        risk = request.risk,
+                        sessionId = candidateRequest.sessionId,
+                        risk = candidateRequest.risk,
                         now = finalNow,
                         baseline = latestFacts,
                     ) ?: return@run FinalPaperEntryOutcome.Rejected(setOf("RISK_FACTS_INCOMPLETE"))
@@ -821,7 +870,13 @@ class PaperCandidateCoordinator(
                 val finalRisk =
                     controller.evaluateEntry(
                         currentFacts.snapshot.copy(now = finalNow),
-                        entryRiskRequest(request, evaluation, finalObservation, finalQuotes.buyCosts, currentFacts),
+                        entryRiskRequest(
+                            candidateRequest,
+                            evaluation,
+                            finalObservation,
+                            finalQuotes.buyCosts,
+                            currentFacts,
+                        ),
                     )
                 if (finalRisk.circuitBreaker.active) {
                     persistence.persistCircuitBreaker(finalRisk.circuitBreaker, finalNow)
@@ -833,7 +888,7 @@ class PaperCandidateCoordinator(
                 }
                 val fill =
                     buildPaperEntryFacts(
-                        request = request,
+                        request = candidateRequest,
                         evaluation = evaluation,
                         outcome = outcome,
                         quotes = finalQuotes,
@@ -854,7 +909,7 @@ class PaperCandidateCoordinator(
 
             is FinalPaperEntryOutcome.Rejected -> {
                 reject(
-                    request,
+                    candidateRequest,
                     finalOutcome.reasons,
                     observations,
                     evaluation.decision.score,
@@ -864,7 +919,7 @@ class PaperCandidateCoordinator(
 
             FinalPaperEntryOutcome.Unsupported -> {
                 reject(
-                    request,
+                    candidateRequest,
                     setOf("PAPER_FILL_PERSISTENCE_UNAVAILABLE"),
                     observations,
                     evaluation.decision.score,

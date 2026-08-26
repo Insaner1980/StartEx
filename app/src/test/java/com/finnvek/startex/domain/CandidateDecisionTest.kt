@@ -23,6 +23,9 @@ class CandidateDecisionTest {
         assertThrows(IllegalStateException::class.java) {
             CandidateStateMachine.transition(CandidateState.ELIGIBLE, CandidateState.POSITION_OPEN)
         }
+        assertThrows(IllegalStateException::class.java) {
+            CandidateStateMachine.transition(CandidateState.CLOSED, CandidateState.DISCOVERED)
+        }
     }
 
     @Test

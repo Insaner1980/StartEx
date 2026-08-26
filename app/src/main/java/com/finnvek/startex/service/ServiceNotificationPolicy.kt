@@ -3,7 +3,6 @@ package com.finnvek.startex.service
 import com.finnvek.startex.StartExApplication
 import com.finnvek.startex.data.local.PositionEntity
 import com.finnvek.startex.data.local.freshSellQuoteLamports
-import java.math.BigDecimal
 
 internal enum class ForegroundStatus {
     PAPER_ACTIVE,
@@ -32,19 +31,11 @@ internal data class ForegroundNotificationModel(
                 else -> ForegroundStatus.PAPER_ACTIVE
             }
 
-    val pnlText: String
-        get() = sessionPnlLamports?.let(::formatSignedSol) ?: "Unavailable"
-
-    val marketAgeText: String
+    val marketAgeSeconds: Long?
         get() {
-            val lastSuccess = lastMarketSuccessAtMillis ?: return "Unavailable"
-            if (lastSuccess > nowMillis) return "Unavailable"
-            val seconds = (nowMillis - lastSuccess) / 1_000
-            return when {
-                seconds < 60 -> "${seconds}s ago"
-                seconds < 3_600 -> "${seconds / 60}m ago"
-                else -> "${seconds / 3_600}h ago"
-            }
+            val lastSuccess = lastMarketSuccessAtMillis ?: return null
+            if (lastSuccess > nowMillis) return null
+            return (nowMillis - lastSuccess) / 1_000
         }
 }
 
@@ -189,14 +180,4 @@ internal fun sessionPnlLamports(
             }
     }
     return total
-}
-
-private fun formatSignedSol(lamports: Long): String {
-    val sol =
-        BigDecimal
-            .valueOf(lamports)
-            .movePointLeft(9)
-            .stripTrailingZeros()
-            .toPlainString()
-    return if (lamports > 0) "+$sol SOL" else "$sol SOL"
 }

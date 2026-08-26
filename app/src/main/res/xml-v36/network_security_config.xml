@@ -3,4 +3,7 @@
     <base-config cleartextTrafficPermitted="false">
         <certificateTransparency enabled="true" />
     </base-config>
+    <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
 </network-security-config>

@@ -301,11 +301,69 @@ class WalletTransferCoordinatorTest {
             assertTrue(submitted is SolTransferResult.Submitted)
             assertFailure(duplicate, SolTransferFailureReason.PREPARED_TRANSFER_CONSUMED)
             assertEquals(
-                listOf("account", "blockhash", "fee", "balance", "simulate", "sign", "record", "send"),
+                listOf(
+                    "account",
+                    "blockhash",
+                    "fee",
+                    "balance",
+                    "simulate",
+                    "account",
+                    "blockHeight",
+                    "fee",
+                    "balance",
+                    "simulate",
+                    "sign",
+                    "record",
+                    "send",
+                ),
                 events,
             )
             assertEquals(1, signer.signCount)
             assertEquals(1, provider.sendCount)
+        }
+
+    @Test
+    fun `expired blockhash is rejected before signing`() =
+        runTest {
+            val provider = MockHeliusRpcProvider()
+            val coordinator = WalletTransferCoordinator(provider)
+            val prepared = prepare(coordinator) as SolTransferResult.Prepared
+            provider.blockHeight = LAST_VALID_BLOCK_HEIGHT + 1
+            val signer = RecordingSigner(SOURCE, provider.events)
+
+            val result = coordinator.submit(prepared.transfer, signer, PASSING_WRITE_AHEAD)
+
+            assertFailure(result, SolTransferFailureReason.BLOCKHASH_EXPIRED)
+            assertEquals(0, signer.signCount)
+            assertEquals(0, provider.sendCount)
+        }
+
+    @Test
+    fun `fee or balance change after review is rejected before signing`() =
+        runTest {
+            val feeProvider = MockHeliusRpcProvider()
+            val feeCoordinator = WalletTransferCoordinator(feeProvider)
+            val feePrepared = prepare(feeCoordinator) as SolTransferResult.Prepared
+            feeProvider.fee = RpcFeeForMessage(ESTIMATED_FEE - 1, slot = 21)
+            val feeSigner = RecordingSigner(SOURCE, feeProvider.events)
+
+            assertFailure(
+                feeCoordinator.submit(feePrepared.transfer, feeSigner, PASSING_WRITE_AHEAD),
+                SolTransferFailureReason.FEE_CHANGED,
+            )
+            assertEquals(0, feeSigner.signCount)
+
+            val balanceProvider = MockHeliusRpcProvider()
+            val balanceCoordinator = WalletTransferCoordinator(balanceProvider)
+            val balancePrepared = prepare(balanceCoordinator) as SolTransferResult.Prepared
+            balanceProvider.balanceLamports = AMOUNT + ESTIMATED_FEE + RESERVE - 1
+            val balanceSigner = RecordingSigner(SOURCE, balanceProvider.events)
+
+            assertFailure(
+                balanceCoordinator.submit(balancePrepared.transfer, balanceSigner, PASSING_WRITE_AHEAD),
+                SolTransferFailureReason.INSUFFICIENT_BALANCE,
+            )
+            assertEquals(0, balanceSigner.signCount)
         }
 
     @Test
@@ -370,12 +428,28 @@ class WalletTransferCoordinatorTest {
             assertFailure(result, SolTransferFailureReason.WRITE_AHEAD_FAILED)
             assertEquals(0, provider.sendCount)
             assertEquals(
-                listOf("account", "blockhash", "fee", "balance", "simulate", "sign", "record"),
+                listOf(
+                    "account",
+                    "blockhash",
+                    "fee",
+                    "balance",
+                    "simulate",
+                    "account",
+                    "blockHeight",
+                    "fee",
+                    "balance",
+                    "simulate",
+                    "sign",
+                    "record",
+                ),
                 events,
             )
         }
 
     // CPD-ON
+    private suspend fun prepare(coordinator: WalletTransferCoordinator): SolTransferResult =
+        coordinator.prepare(SOURCE, DESTINATION, AMOUNT, FEE_CAP, RESERVE)
+
     private fun assertFailure(
         result: SolTransferResult,
         expectedReason: SolTransferFailureReason,
@@ -401,8 +475,8 @@ class WalletTransferCoordinatorTest {
 
     private class MockHeliusRpcProvider(
         private val accountInfo: RpcAccountInfo? = null,
-        private val balanceLamports: Long = AMOUNT + ESTIMATED_FEE + RESERVE,
-        private val fee: RpcFeeForMessage? = RpcFeeForMessage(ESTIMATED_FEE, slot = 13),
+        var balanceLamports: Long = AMOUNT + ESTIMATED_FEE + RESERVE,
+        var fee: RpcFeeForMessage? = RpcFeeForMessage(ESTIMATED_FEE, slot = 13),
         private val simulation: RpcSimulation = RpcSimulation.Succeeded(slot = 20, unitsConsumed = 150),
         private val sendFailure: ProviderError? = null,
         val events: MutableList<String> = mutableListOf(),
@@ -413,6 +487,7 @@ class WalletTransferCoordinatorTest {
             private set
         var sendCount: Int = 0
             private set
+        var blockHeight: Long = LAST_VALID_BLOCK_HEIGHT
 
         override suspend fun getBalance(address: String): ProviderResult<RpcBalance> {
             events += "balance"
@@ -424,6 +499,11 @@ class WalletTransferCoordinatorTest {
             return ProviderResult.Success(
                 RpcLatestBlockhash(BLOCKHASH, LAST_VALID_BLOCK_HEIGHT, slot = 12),
             )
+        }
+
+        override suspend fun getBlockHeight(): ProviderResult<Long> {
+            events += "blockHeight"
+            return ProviderResult.Success(blockHeight)
         }
 
         override suspend fun getAccountInfo(address: String): ProviderResult<RpcAccountInfo?> {

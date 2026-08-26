@@ -11,6 +11,7 @@ import com.finnvek.startex.domain.Lamports
 import com.finnvek.startex.domain.toLongExactCompat
 import com.finnvek.startex.network.JupiterTokenSnapshot
 import com.finnvek.startex.network.ProviderId
+import com.finnvek.startex.network.RpcAccountInfo
 import com.finnvek.startex.security.WalletAddressValidator
 import com.finnvek.startex.wallet.SolanaAddressValidator
 import java.math.BigDecimal
@@ -131,6 +132,60 @@ class DefaultPaperCandidateSafetyProofSource(
             }
         }
     }
+}
+
+internal fun paperExitSafetyFacts(
+    token: JupiterTokenSnapshot,
+    account: RpcAccountInfo,
+    nowMillis: Long,
+    maximumAgeMillis: Long,
+): PaperExitSafetyFacts? {
+    val age = nowMillis - token.updatedAtMillis
+    if (
+        age !in 0..maximumAgeMillis ||
+        account.executable ||
+        account.owner != token.tokenProgram ||
+        token.tokenProgram != LEGACY_TOKEN_PROGRAM_ID
+    ) {
+        return null
+    }
+
+    val momentumCollapsed = token.stats5m.sellCount > token.stats5m.buyCount
+    val suspiciousCreator =
+        token.audit.developerBalancePercentage
+            ?.let { it > MAXIMUM_SAFE_DEVELOPER_PERCENT }
+            ?: true
+    val largeHolderSell = token.audit.topHoldersPercentage > MAXIMUM_SAFE_TOP_HOLDER_PERCENT
+    val tokenUnsafe =
+        token.audit.isSuspicious ||
+            !token.audit.mintAuthorityDisabled ||
+            !token.audit.freezeAuthorityDisabled
+    val concentrationPenalty =
+        token.audit.topHoldersPercentage
+            .setScale(0, RoundingMode.CEILING)
+            .intValueExact()
+            .coerceIn(0, 40)
+    val creatorPenalty =
+        token.audit.developerBalancePercentage
+            ?.setScale(0, RoundingMode.CEILING)
+            ?.intValueExact()
+            ?.coerceIn(0, 30)
+            ?: 30
+
+    return PaperExitSafetyFacts(
+        score =
+            if (tokenUnsafe) {
+                0
+            } else {
+                (100 - concentrationPenalty - creatorPenalty - if (momentumCollapsed) 20 else 0)
+                    .coerceIn(0, 100)
+            },
+        tokenUnsafe = tokenUnsafe,
+        momentumCollapsed = momentumCollapsed,
+        liquidityCollapsed = false,
+        suspiciousCreatorActivity = suspiciousCreator,
+        largeHolderSell = largeHolderSell,
+    )
 }
 
 @Suppress("LongParameterList")
@@ -463,6 +518,8 @@ private val ACTIVE_POSITION_STATES =
         "EXIT_BLOCKED",
     )
 private const val LEGACY_TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+private val MAXIMUM_SAFE_DEVELOPER_PERCENT = BigDecimal("10")
+private val MAXIMUM_SAFE_TOP_HOLDER_PERCENT = BigDecimal("30")
 private const val TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnEKS3sZDJR9L"
 private const val BASIS_POINT_DECIMALS = 2
 private const val MAXIMUM_BASIS_POINTS = 10_000

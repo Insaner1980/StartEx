@@ -28,7 +28,7 @@ internal object SecretEnvelopeCipher {
         cipher: Cipher,
         envelope: SecretEnvelope,
     ): ByteArray {
-        require(envelope.version == ENVELOPE_VERSION) { "Unsupported secret envelope version" }
+        requireSupportedVersion(envelope)
         cipher.updateAAD(authenticatedMetadata(envelope.version, envelope.publicAddress))
         val ciphertext = envelope.ciphertext
         return try {
@@ -36,6 +36,10 @@ internal object SecretEnvelopeCipher {
         } finally {
             ciphertext.clearSecret()
         }
+    }
+
+    fun requireSupportedVersion(envelope: SecretEnvelope) {
+        if (envelope.version != ENVELOPE_VERSION) throw UnsupportedSecretEnvelopeVersionException()
     }
 
     private fun authenticatedMetadata(

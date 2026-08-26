@@ -33,6 +33,7 @@ object MonitoringSessionPolicy {
         persistedSessionMode: String?,
         providersConfigured: Boolean,
         riskLimitsValid: Boolean,
+        freshStartPrerequisitesReady: Boolean,
     ): SessionStartAction =
         when {
             operatingMode != OperatingMode.PAPER ||
@@ -42,7 +43,7 @@ object MonitoringSessionPolicy {
                 SessionStartAction.LIVE_EXECUTION_LOCKED
             }
 
-            !providersConfigured || !riskLimitsValid -> {
+            !providersConfigured || !riskLimitsValid || !freshStartPrerequisitesReady -> {
                 SessionStartAction.NOTIFY_AND_STOP
             }
 

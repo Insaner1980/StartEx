@@ -1,6 +1,7 @@
 package com.finnvek.startex.data.settings
 
 import android.content.Context
+import androidx.datastore.core.CorruptionException
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
@@ -50,7 +51,11 @@ class AppSettingsStore(
     val settings: Flow<AppSettings> =
         dataStore.data
             .catch { error ->
-                if (error is IOException) emit(emptyPreferences()) else throw error
+                if (isRecoverableSettingsReadFailure(error)) {
+                    emit(emptyPreferences())
+                } else {
+                    throw error
+                }
             }.map(::toSettings)
 
     suspend fun setOnboardingComplete(value: Boolean) = update(ONBOARDING_COMPLETE, value)
@@ -126,3 +131,5 @@ class AppSettingsStore(
         val DISPLAY_CURRENCY = stringPreferencesKey("display_currency")
     }
 }
+
+internal fun isRecoverableSettingsReadFailure(error: Throwable): Boolean = error is IOException && error !is CorruptionException

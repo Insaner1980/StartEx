@@ -35,6 +35,16 @@ class SecretEnvelopeTest {
         SecretEnvelope(1, "address", ByteArray(16), ByteArray(48))
     }
 
+    @Test(expected = IllegalArgumentException::class)
+    fun `rejects ciphertext larger than the secret envelope limit`() {
+        SecretEnvelope(1, "address", ByteArray(12), ByteArray(65_553))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `rejects metadata larger than the secret envelope limit`() {
+        SecretEnvelope(1, "a".repeat(129), ByteArray(12), ByteArray(48))
+    }
+
     @Test
     fun `clears sensitive bytes in place`() {
         val secret = byteArrayOf(1, 2, 3, 4)

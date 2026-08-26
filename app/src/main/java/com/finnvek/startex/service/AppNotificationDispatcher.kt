@@ -2,6 +2,7 @@ package com.finnvek.startex.service
 
 import android.Manifest
 import android.annotation.SuppressLint
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
@@ -29,7 +30,7 @@ internal object AppNotificationDispatcher {
     ) {
         val alert = policy.alert(severity, category, code, relatedId) ?: return
         if (!reserveAlert(alert.dedupeKey, nowMillis)) return
-        if (!context.canPostAlerts()) {
+        if (!context.canPostNotifications(alert.channelId)) {
             lastAlertAtMillis.remove(alert.dedupeKey, nowMillis)
             return
         }
@@ -77,14 +78,6 @@ internal object AppNotificationDispatcher {
             }
         }
     }
-
-    private fun Context.canPostAlerts(): Boolean =
-        (
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
-                PackageManager.PERMISSION_GRANTED
-        ) &&
-            NotificationManagerCompat.from(this).areNotificationsEnabled()
 
     private val AlertKind.textResources: Pair<Int, Int>
         get() =
@@ -197,6 +190,20 @@ internal object AppNotificationDispatcher {
 
     private const val REQUEST_OPEN = 100
     private const val ALERT_DEDUPE_MILLIS = 15 * 60 * 1_000L
+}
+
+internal fun Context.canPostNotifications(vararg requiredChannelIds: String): Boolean {
+    val appNotificationsAllowed =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+    if (!appNotificationsAllowed || !NotificationManagerCompat.from(this).areNotificationsEnabled()) return false
+    val manager = getSystemService(NotificationManager::class.java) ?: return false
+    return requiredChannelIds.all { channelId ->
+        manager.getNotificationChannel(channelId)?.importance?.let {
+            it != NotificationManager.IMPORTANCE_NONE
+        } == true
+    }
 }
 
 internal fun pruneExpiredAlerts(

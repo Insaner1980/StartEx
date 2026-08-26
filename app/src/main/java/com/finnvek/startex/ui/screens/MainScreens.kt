@@ -1,3 +1,5 @@
+@file:Suppress("TooManyFunctions")
+
 package com.finnvek.startex.ui.screens
 
 import androidx.activity.compose.BackHandler
@@ -15,16 +17,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.KeyboardArrowRight
 import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.ArrowDownward
 import androidx.compose.material.icons.outlined.ArrowUpward
 import androidx.compose.material.icons.outlined.BatteryChargingFull
 import androidx.compose.material.icons.outlined.CheckCircle
-import androidx.compose.material.icons.outlined.ChevronRight
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.DataObject
 import androidx.compose.material.icons.outlined.ErrorOutline
@@ -47,12 +53,14 @@ import androidx.compose.material.icons.outlined.Wallet
 import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -69,16 +77,34 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.error
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.paneTitle
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.finnvek.startex.BuildConfig
@@ -86,6 +112,7 @@ import com.finnvek.startex.R
 import com.finnvek.startex.bootstrap.DefaultConfiguration
 import com.finnvek.startex.data.local.AppEventEntity
 import com.finnvek.startex.data.local.DailyPerformanceEntity
+import com.finnvek.startex.data.local.PositionEntity
 import com.finnvek.startex.data.local.ProviderHealthEntity
 import com.finnvek.startex.data.local.RiskConfigEntity
 import com.finnvek.startex.data.local.StrategyConfigEntity
@@ -102,18 +129,24 @@ import com.finnvek.startex.domain.ConfigurationFieldError
 import com.finnvek.startex.domain.ConfigurationSafeRanges
 import com.finnvek.startex.domain.RiskConfigurationInput
 import com.finnvek.startex.domain.StrategyConfigurationInput
+import com.finnvek.startex.formatUserNumber
+import com.finnvek.startex.formatUserTimestamp
 import com.finnvek.startex.network.ProviderId
 import com.finnvek.startex.ui.ConfigurationSaveState
 import com.finnvek.startex.ui.CredentialProviders
+import com.finnvek.startex.ui.HistoryScreenState
+import com.finnvek.startex.ui.HomeScreenState
 import com.finnvek.startex.ui.MonitorState
 import com.finnvek.startex.ui.PersistedAppState
 import com.finnvek.startex.ui.PreflightState
 import com.finnvek.startex.ui.TradingMode
 import com.finnvek.startex.ui.WalletActivity
+import com.finnvek.startex.ui.WalletScreenState
 import com.finnvek.startex.ui.WalletTokenHolding
 import com.finnvek.startex.ui.canEnableUnattendedMode
 import com.finnvek.startex.ui.canRequestEmergencyExit
 import com.finnvek.startex.ui.canRequestSellNow
+import com.finnvek.startex.ui.canRequestStopAfterClose
 import com.finnvek.startex.ui.components.AddressText
 import com.finnvek.startex.ui.components.EmptyState
 import com.finnvek.startex.ui.components.MetricRow
@@ -124,10 +157,13 @@ import com.finnvek.startex.ui.components.SectionHeading
 import com.finnvek.startex.ui.components.SettingsRow
 import com.finnvek.startex.ui.components.StatusPill
 import com.finnvek.startex.ui.components.abbreviateAddress
+import com.finnvek.startex.ui.historyScreenState
+import com.finnvek.startex.ui.homeScreenState
 import com.finnvek.startex.ui.theme.StartExAmber
 import com.finnvek.startex.ui.theme.StartExGreen
 import com.finnvek.startex.ui.theme.StartExOutline
 import com.finnvek.startex.ui.theme.StartExRed
+import com.finnvek.startex.ui.walletScreenState
 import kotlinx.coroutines.delay
 import java.math.BigDecimal
 import java.math.BigInteger
@@ -136,6 +172,8 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
 
+// Public-state adapters intentionally mirror the internal projected-state screen contracts.
+// CPD-OFF
 @Composable
 fun HomeScreen(
     state: PersistedAppState,
@@ -148,6 +186,38 @@ fun HomeScreen(
     onEmergencyExit: () -> Unit,
     onStopAfterClose: () -> Unit,
     modifier: Modifier = Modifier,
+    preflightFocusRequester: FocusRequester? = null,
+) {
+    HomeScreen(
+        state = state.homeScreenState(),
+        onPreflight = onPreflight,
+        onRecover = onRecover,
+        onPause = onPause,
+        onResume = onResume,
+        onStop = onStop,
+        onSellNow = onSellNow,
+        onEmergencyExit = onEmergencyExit,
+        onStopAfterClose = onStopAfterClose,
+        modifier = modifier,
+        preflightFocusRequester = preflightFocusRequester,
+    )
+}
+// CPD-ON
+
+@Composable
+@Suppress("LongMethod", "CyclomaticComplexMethod")
+internal fun HomeScreen(
+    state: HomeScreenState,
+    onPreflight: () -> Unit,
+    onRecover: () -> Unit,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onStop: () -> Unit,
+    onSellNow: (String) -> Unit,
+    onEmergencyExit: () -> Unit,
+    onStopAfterClose: () -> Unit,
+    modifier: Modifier = Modifier,
+    preflightFocusRequester: FocusRequester? = null,
 ) {
     var quoteNowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
     LaunchedEffect(state.openPositions.isNotEmpty()) {
@@ -169,6 +239,7 @@ fun HomeScreen(
                             monitorLabel(state.monitorState)
                         },
                     color = if (state.demoMode) StartExAmber else monitorColor(state.monitorState),
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
             },
         )
@@ -195,7 +266,7 @@ fun HomeScreen(
         )
         if (state.monitorState == MonitorState.NeedsAttention) {
             Spacer(modifier = Modifier.height(14.dp))
-            SectionCard {
+            SectionCard(modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite }) {
                 SectionHeading(
                     stringResource(R.string.recovery_required_title),
                     subtitle = stringResource(R.string.recovery_required_body),
@@ -226,15 +297,28 @@ fun HomeScreen(
         }
         Spacer(modifier = Modifier.height(14.dp))
         SectionCard {
-            SectionHeading(
-                stringResource(R.string.wallet_balance),
-                subtitle = state.walletAddress?.let(::abbreviateAddress),
-            )
+            SectionHeading(stringResource(R.string.wallet_balance))
+            state.walletAddress?.let { address ->
+                Spacer(modifier = Modifier.height(4.dp))
+                AddressText(address)
+            }
             Spacer(modifier = Modifier.height(16.dp))
             MetricRow(
                 stringResource(R.string.available_balance),
-                balanceSummary(state),
+                when {
+                    state.walletBalanceLoading -> stringResource(R.string.balance_loading)
+                    state.walletBalanceError != null -> stringResource(R.string.balance_unavailable)
+                    else -> balanceSummary(state.walletBalanceLamports, state.walletBalanceEur)
+                },
             )
+            state.walletBalanceError?.let { error ->
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = stringResource(error),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = StartExRed,
+                )
+            }
             Spacer(modifier = Modifier.height(10.dp))
             MetricRow(stringResource(R.string.reserved_balance), stringResource(R.string.balance_unavailable))
             Spacer(modifier = Modifier.height(8.dp))
@@ -259,13 +343,15 @@ fun HomeScreen(
             Spacer(modifier = Modifier.height(16.dp))
             MetricRow(
                 stringResource(R.string.realized_pnl),
-                today?.netPnlLamports?.let(::formatSignedSol)
+                today?.netPnlLamports?.let { formatSignedSol(it) }
                     ?: stringResource(R.string.no_recorded_value),
             )
             Spacer(modifier = Modifier.height(10.dp))
             MetricRow(
                 stringResource(R.string.fees_paid),
-                today?.totalFeesLamports?.let { "${formatSol(it)} SOL" }
+                today?.totalFeesLamports?.let {
+                    stringResource(R.string.sol_balance_value, formatSol(it))
+                }
                     ?: stringResource(R.string.no_recorded_value),
             )
         }
@@ -275,13 +361,27 @@ fun HomeScreen(
             if (state.openPositions.isEmpty()) {
                 EmptyState(
                     icon = Icons.Outlined.Visibility,
-                    title = stringResource(R.string.no_positions_title),
-                    body = stringResource(R.string.no_positions_body),
+                    title =
+                        stringResource(
+                            if (state.demoMode) R.string.demo_no_positions_title else R.string.no_positions_title,
+                        ),
+                    body =
+                        stringResource(
+                            if (state.demoMode) R.string.demo_no_positions_body else R.string.no_positions_body,
+                        ),
                 )
             } else {
                 state.openPositions.forEachIndexed { index, position ->
                     if (index > 0) HorizontalDivider(color = StartExOutline)
                     Column(modifier = Modifier.padding(vertical = 12.dp)) {
+                        val maximumQuoteAgeMillis = state.risk?.minimumDataFreshnessMillis ?: -1
+                        val freshQuote =
+                            position.freshSellQuoteLamports(
+                                nowMillis = quoteNowMillis,
+                                maximumAgeMillis = maximumQuoteAgeMillis,
+                            )
+                        val staleQuote = position.hasStaleSellQuote(quoteNowMillis, maximumQuoteAgeMillis)
+                        val quoteAgeSeconds = position.sellQuoteAgeSeconds(quoteNowMillis)
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -289,58 +389,143 @@ fun HomeScreen(
                             AddressText(position.mint, modifier = Modifier.weight(1f))
                             StatusPill(
                                 text = position.status.replace('_', ' '),
-                                color = if (position.status == "OPEN") StartExGreen else StartExAmber,
+                                color =
+                                    when (position.status) {
+                                        "OPEN" -> StartExGreen
+                                        "EXIT_BLOCKED" -> StartExRed
+                                        else -> StartExAmber
+                                    },
+                                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                             )
                         }
                         Spacer(modifier = Modifier.height(8.dp))
                         MetricRow(
                             stringResource(R.string.executable_exit_quote),
-                            position
-                                .freshSellQuoteLamports(
-                                    nowMillis = quoteNowMillis,
-                                    maximumAgeMillis = state.risk?.minimumDataFreshnessMillis ?: -1,
-                                )?.let { "$it lamports" }
-                                ?: stringResource(R.string.quote_unavailable),
+                            freshQuote?.let {
+                                pluralStringResource(
+                                    R.plurals.lamport_value,
+                                    if (it == 1L) 1 else 2,
+                                    it,
+                                )
+                            }
+                                ?: stringResource(
+                                    if (staleQuote) R.string.quote_stale else R.string.quote_unavailable,
+                                ),
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        MetricRow(
+                            stringResource(R.string.executable_quote_age),
+                            quoteAgeSeconds?.let { marketAgeText(it) }
+                                ?: stringResource(R.string.value_unavailable),
+                        )
+                        Spacer(modifier = Modifier.height(8.dp))
+                        MetricRow(
+                            stringResource(R.string.estimated_gross_pnl),
+                            freshQuote
+                                ?.let { paperGrossPnlLamports(it, position.netInputLamports) }
+                                ?.let { formatSignedSol(it) }
+                                ?: stringResource(
+                                    if (staleQuote) R.string.quote_stale else R.string.no_recorded_value,
+                                ),
                         )
                         Spacer(modifier = Modifier.height(10.dp))
+                        val sellNowEnabled = canRequestSellNow(position, state.monitorState, state.demoMode)
+                        val sellNowDisabledReason =
+                            if (sellNowEnabled) {
+                                null
+                            } else {
+                                stringResource(
+                                    homeActionDisabledReason(
+                                        demoMode = state.demoMode,
+                                        monitorState = state.monitorState,
+                                        unavailableReason = R.string.sell_now_unavailable,
+                                    ),
+                                )
+                            }
                         OutlinedButton(
                             onClick = { onSellNow(position.id) },
-                            enabled = canRequestSellNow(position, state.demoMode),
+                            enabled = sellNowEnabled,
+                            colors = ButtonDefaults.outlinedButtonColors(contentColor = StartExRed),
                             modifier =
                                 Modifier
                                     .fillMaxWidth()
-                                    .heightIn(min = 48.dp),
+                                    .heightIn(min = 48.dp)
+                                    .semantics {
+                                        sellNowDisabledReason?.let { stateDescription = it }
+                                    },
                         ) {
-                            Text(stringResource(R.string.sell_now), color = StartExRed)
+                            Text(stringResource(R.string.sell_now))
                         }
                     }
                 }
+                val stopAfterCloseEnabled =
+                    canRequestStopAfterClose(
+                        state.openPositions,
+                        state.monitorState,
+                        state.demoMode,
+                    )
+                val stopAfterCloseDisabledReason =
+                    if (stopAfterCloseEnabled) {
+                        null
+                    } else {
+                        stringResource(
+                            homeActionDisabledReason(
+                                demoMode = state.demoMode,
+                                monitorState = state.monitorState,
+                                unavailableReason = R.string.stop_after_close_unavailable,
+                            ),
+                        )
+                    }
                 OutlinedButton(
                     onClick = onStopAfterClose,
-                    enabled = !state.demoMode,
+                    enabled = stopAfterCloseEnabled,
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
-                            .heightIn(min = 48.dp),
+                            .heightIn(min = 48.dp)
+                            .semantics {
+                                stopAfterCloseDisabledReason?.let { stateDescription = it }
+                            },
                 ) {
                     Icon(Icons.Outlined.StopCircle, contentDescription = null)
                     Text(stringResource(R.string.stop_after_close), Modifier.padding(start = 8.dp))
                 }
+                val emergencyExitEnabled =
+                    canRequestEmergencyExit(
+                        state.openPositions,
+                        state.monitorState,
+                        state.demoMode,
+                    )
+                val emergencyExitDisabledReason =
+                    if (emergencyExitEnabled) {
+                        null
+                    } else {
+                        stringResource(
+                            homeActionDisabledReason(
+                                demoMode = state.demoMode,
+                                monitorState = state.monitorState,
+                                unavailableReason = R.string.emergency_exit_unavailable,
+                            ),
+                        )
+                    }
                 OutlinedButton(
                     onClick = onEmergencyExit,
-                    enabled = canRequestEmergencyExit(state.openPositions, state.demoMode),
+                    enabled = emergencyExitEnabled,
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = StartExRed),
                     modifier =
                         Modifier
                             .fillMaxWidth()
                             .padding(top = 8.dp)
-                            .heightIn(min = 48.dp),
+                            .heightIn(min = 48.dp)
+                            .semantics {
+                                emergencyExitDisabledReason?.let { stateDescription = it }
+                            },
                 ) {
-                    Icon(Icons.Outlined.WarningAmber, contentDescription = null, tint = StartExRed)
+                    Icon(Icons.Outlined.WarningAmber, contentDescription = null)
                     Text(
                         stringResource(R.string.emergency_exit_and_stop),
                         modifier = Modifier.padding(start = 8.dp),
-                        color = StartExRed,
                     )
                 }
             }
@@ -359,7 +544,7 @@ fun HomeScreen(
                     Button(
                         onClick = onPreflight,
                         modifier =
-                            Modifier
+                            (preflightFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
                                 .fillMaxWidth()
                                 .heightIn(min = 48.dp),
                     ) {
@@ -431,6 +616,39 @@ fun HomeScreen(
     }
 }
 
+internal fun PositionEntity.hasStaleSellQuote(
+    nowMillis: Long,
+    maximumAgeMillis: Long,
+): Boolean {
+    if (!routeAvailable || maximumAgeMillis < 0 || latestSellQuoteLamports?.let { it > 0 } != true) return false
+    val observedAt = latestSellQuoteAtMillis ?: return false
+    val age = runCatching { Math.subtractExact(nowMillis, observedAt) }.getOrNull() ?: return true
+    return age !in 0..maximumAgeMillis
+}
+
+internal fun PositionEntity.sellQuoteAgeSeconds(nowMillis: Long): Long? {
+    if (!routeAvailable || latestSellQuoteLamports?.let { it > 0 } != true) return null
+    val observedAt = latestSellQuoteAtMillis ?: return null
+    val ageMillis = runCatching { Math.subtractExact(nowMillis, observedAt) }.getOrNull() ?: return null
+    return ageMillis.takeIf { it >= 0 }?.div(1_000)
+}
+
+internal fun homeActionDisabledReason(
+    demoMode: Boolean,
+    monitorState: MonitorState,
+    unavailableReason: Int,
+): Int =
+    when {
+        demoMode -> R.string.demo_action_unavailable
+        monitorState != MonitorState.Running -> R.string.monitoring_must_be_running
+        else -> unavailableReason
+    }
+
+internal fun paperGrossPnlLamports(
+    sellQuoteLamports: Long,
+    netInputLamports: Long,
+): Long? = runCatching { Math.subtractExact(sellQuoteLamports, netInputLamports) }.getOrNull()
+
 @Composable
 fun WatchScreen(
     candidates: List<TokenCandidateEntity>,
@@ -440,7 +658,8 @@ fun WatchScreen(
 ) {
     var selectedTab by rememberSaveable { mutableIntStateOf(0) }
     var query by rememberSaveable { mutableStateOf("") }
-    var selectedCandidate by remember { mutableStateOf<TokenCandidateEntity?>(null) }
+    var selectedCandidateMint by remember { mutableStateOf<String?>(null) }
+    val selectedCandidate = selectedCandidateMint?.let { mint -> candidates.firstOrNull { it.mint == mint } }
     val candidateItems = candidates.filter { it.state != "REJECTED" && it.state != "EXPIRED" }
     val rejectedItems = candidates.filter { it.state == "REJECTED" || it.state == "EXPIRED" }
     val filteredCandidates =
@@ -456,20 +675,55 @@ fun WatchScreen(
             stringResource(R.string.watch_events_count, events.size),
         )
 
-    Column(modifier = modifier.fillMaxSize()) {
-        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
+    if (demoMode) {
+        ScreenColumn(modifier = modifier) {
             ScreenHeader(title = stringResource(R.string.watch_title))
-            if (demoMode) {
-                Spacer(modifier = Modifier.height(14.dp))
-                DemoModeNotice()
-            }
+            Spacer(modifier = Modifier.height(14.dp))
+            // Demo and persisted-data modes intentionally keep the same navigation controls.
+            // CPD-OFF
+            DemoModeNotice()
             Spacer(modifier = Modifier.height(14.dp))
             PrimaryTabRow(selectedTabIndex = selectedTab) {
                 tabs.forEachIndexed { index, label ->
                     Tab(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
-                        text = { Text(label, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                        text = { Text(label) },
+                    )
+                }
+            }
+            if (selectedTab != 2) {
+                Spacer(modifier = Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = query,
+                    onValueChange = { query = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(stringResource(R.string.search_symbol_or_mint)) },
+                    leadingIcon = { Icon(Icons.Outlined.Search, contentDescription = null) },
+                )
+            }
+            // CPD-ON
+            EmptyState(
+                icon = if (selectedTab == 2) Icons.Outlined.History else Icons.Outlined.CloudOff,
+                title = stringResource(R.string.demo_watch_empty_title),
+                body = stringResource(R.string.demo_watch_empty_body),
+                modifier = Modifier.padding(vertical = 28.dp),
+            )
+        }
+        return
+    }
+
+    Column(modifier = modifier.fillMaxSize()) {
+        Column(modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
+            ScreenHeader(title = stringResource(R.string.watch_title))
+            Spacer(modifier = Modifier.height(14.dp))
+            PrimaryTabRow(selectedTabIndex = selectedTab) {
+                tabs.forEachIndexed { index, label ->
+                    Tab(
+                        selected = selectedTab == index,
+                        onClick = { selectedTab = index },
+                        text = { Text(label) },
                     )
                 }
             }
@@ -496,6 +750,8 @@ fun WatchScreen(
             }
 
             selectedTab == 2 -> {
+                // Event and candidate lists intentionally share the screen's list geometry.
+                // CPD-OFF
                 LazyColumn(
                     contentPadding =
                         androidx.compose.foundation.layout.PaddingValues(
@@ -507,6 +763,7 @@ fun WatchScreen(
                 ) {
                     items(events, key = { it.id }) { event -> EventCard(event) }
                 }
+                // CPD-ON
             }
 
             filteredCandidates.isEmpty() -> {
@@ -514,18 +771,25 @@ fun WatchScreen(
                     icon = if (selectedTab == 1) Icons.Outlined.ErrorOutline else Icons.Outlined.CloudOff,
                     title =
                         stringResource(
-                            if (query.isBlank()) R.string.watch_empty_title else R.string.search_empty_title,
+                            when {
+                                query.isNotBlank() -> R.string.search_empty_title
+                                selectedTab == 1 -> R.string.watch_rejected_empty_title
+                                else -> R.string.watch_empty_title
+                            },
                         ),
                     body =
                         stringResource(
-                            if (query.isBlank()) R.string.watch_empty_body else R.string.search_empty_body,
+                            when {
+                                query.isNotBlank() -> R.string.search_empty_body
+                                selectedTab == 1 -> R.string.watch_rejected_empty_body
+                                else -> R.string.watch_empty_body
+                            },
                         ),
                     modifier = Modifier.padding(horizontal = 18.dp, vertical = 28.dp),
                 )
             }
 
             else -> {
-                // CPD-OFF
                 LazyColumn(
                     contentPadding =
                         androidx.compose.foundation.layout.PaddingValues(
@@ -536,19 +800,20 @@ fun WatchScreen(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     items(filteredCandidates, key = { it.mint }) { candidate ->
-                        CandidateCard(candidate, onClick = { selectedCandidate = candidate })
+                        CandidateCard(candidate, onClick = { selectedCandidateMint = candidate.mint })
                     }
                 }
-                // CPD-ON
             }
         }
     }
 
     selectedCandidate?.let { candidate ->
-        CandidateDialog(candidate = candidate, onDismiss = { selectedCandidate = null })
+        CandidateDialog(candidate = candidate, onDismiss = { selectedCandidateMint = null })
     }
 }
 
+// Public-state adapters intentionally mirror the internal projected-state screen contracts.
+// CPD-OFF
 @Composable
 fun WalletScreen(
     state: PersistedAppState,
@@ -561,6 +826,37 @@ fun WalletScreen(
     onLock: () -> Unit,
     onRefreshBalance: () -> Unit,
     modifier: Modifier = Modifier,
+    receiveFocusRequester: FocusRequester? = null,
+) {
+    WalletScreen(
+        state = state.walletScreenState(),
+        onCreateWallet = onCreateWallet,
+        onRestoreWallet = onRestoreWallet,
+        onReceive = onReceive,
+        onSend = onSend,
+        onTrustedAddresses = onTrustedAddresses,
+        onReveal = onReveal,
+        onLock = onLock,
+        onRefreshBalance = onRefreshBalance,
+        modifier = modifier,
+        receiveFocusRequester = receiveFocusRequester,
+    )
+}
+// CPD-ON
+
+@Composable
+internal fun WalletScreen(
+    state: WalletScreenState,
+    onCreateWallet: () -> Unit,
+    onRestoreWallet: () -> Unit,
+    onReceive: () -> Unit,
+    onSend: () -> Unit,
+    onTrustedAddresses: () -> Unit,
+    onReveal: () -> Unit,
+    onLock: () -> Unit,
+    onRefreshBalance: () -> Unit,
+    modifier: Modifier = Modifier,
+    receiveFocusRequester: FocusRequester? = null,
 ) {
     ScreenColumn(modifier = modifier) {
         ScreenHeader(
@@ -583,7 +879,10 @@ fun WalletScreen(
                     subtitle = stringResource(R.string.demo_wallet_body),
                 )
                 Spacer(modifier = Modifier.height(14.dp))
-                MetricRow(stringResource(R.string.available_balance), balanceSummary(state))
+                MetricRow(
+                    stringResource(R.string.available_balance),
+                    balanceSummary(state.walletBalanceLamports, state.walletBalanceEur),
+                )
             }
             WalletDataSections(state = state, onRefresh = null)
         } else if (address == null) {
@@ -636,7 +935,8 @@ fun WalletScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                         Text(
-                            text = balanceText(state),
+                            text = balanceText(state.walletBalanceLamports),
+                            modifier = Modifier.fillMaxWidth(),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.SemiBold,
                         )
@@ -648,9 +948,11 @@ fun WalletScreen(
                             )
                         }
                     }
+                    val refreshBalanceDescription = stringResource(R.string.refresh_balance)
                     IconButton(
                         onClick = onRefreshBalance,
                         enabled = !state.walletBalanceLoading,
+                        modifier = Modifier.semantics { contentDescription = refreshBalanceDescription },
                     ) {
                         if (state.walletBalanceLoading) {
                             CircularProgressIndicator(
@@ -660,7 +962,7 @@ fun WalletScreen(
                         } else {
                             Icon(
                                 imageVector = Icons.Outlined.Refresh,
-                                contentDescription = stringResource(R.string.refresh_balance),
+                                contentDescription = null,
                             )
                         }
                     }
@@ -686,7 +988,10 @@ fun WalletScreen(
                         modifier =
                             Modifier
                                 .weight(1f)
-                                .heightIn(min = 48.dp),
+                                .heightIn(min = 48.dp)
+                                .then(
+                                    receiveFocusRequester?.let { Modifier.focusRequester(it) } ?: Modifier,
+                                ),
                     ) {
                         Icon(Icons.Outlined.ArrowDownward, contentDescription = null)
                         Text(stringResource(R.string.receive), Modifier.padding(start = 8.dp))
@@ -716,13 +1021,13 @@ fun WalletScreen(
                             state.trustedAddresses.size,
                         ),
                     onClick = onTrustedAddresses,
-                ) { Icon(Icons.Outlined.ChevronRight, contentDescription = null) }
+                ) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) }
                 SettingsRow(
                     icon = Icons.Outlined.Visibility,
                     title = stringResource(R.string.reveal_recovery_phrase),
                     supportingText = stringResource(R.string.authentication_required),
                     onClick = onReveal,
-                ) { Icon(Icons.Outlined.ChevronRight, contentDescription = null) }
+                ) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) }
                 SettingsRow(
                     icon = Icons.Outlined.Lock,
                     title = stringResource(R.string.lock_wallet_now),
@@ -736,11 +1041,13 @@ fun WalletScreen(
 
 @Composable
 private fun WalletDataSections(
-    state: PersistedAppState,
+    state: WalletScreenState,
     onRefresh: (() -> Unit)?,
 ) {
     val standardHoldings = state.tokenHoldings.filterNot { holding -> holding.isToken2022 }
-    val token2022Holdings = state.tokenHoldings.filter { holding -> holding.isToken2022 }
+    val displayedHoldings = walletHoldingsForDisplay(state.tokenHoldings)
+    val displayedStandardHoldings = displayedHoldings.filterNot { holding -> holding.isToken2022 }
+    val displayedToken2022Holdings = displayedHoldings.filter { holding -> holding.isToken2022 }
     Column(modifier = Modifier.fillMaxWidth()) {
         Spacer(modifier = Modifier.height(14.dp))
         SectionCard {
@@ -750,8 +1057,16 @@ private fun WalletDataSections(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 SectionHeading(
-                    stringResource(R.string.token_holdings),
-                    subtitle = state.tokenHoldingsSlot?.let { stringResource(R.string.balance_slot, it) },
+                    stringResource(
+                        if (state.demoMode) R.string.demo_token_holdings else R.string.token_holdings,
+                    ),
+                    subtitle =
+                        state.tokenHoldingsSlot?.let {
+                            stringResource(
+                                if (state.demoMode) R.string.demo_synthetic_slot else R.string.balance_slot,
+                                it,
+                            )
+                        },
                 )
                 if (state.walletDataLoading) {
                     CircularProgressIndicator(modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
@@ -788,17 +1103,17 @@ private fun WalletDataSections(
                 }
 
                 else -> {
-                    standardHoldings.take(WALLET_DATA_DISPLAY_LIMIT).forEach { holding ->
+                    displayedStandardHoldings.forEach { holding ->
                         TokenHoldingRow(holding)
                     }
-                    if (token2022Holdings.isNotEmpty()) {
+                    if (displayedToken2022Holdings.isNotEmpty()) {
                         HorizontalDivider(color = StartExOutline, modifier = Modifier.padding(vertical = 10.dp))
                         Text(
                             text = stringResource(R.string.token_2022_caution),
                             style = MaterialTheme.typography.bodyMedium,
                             color = StartExAmber,
                         )
-                        token2022Holdings.take(WALLET_DATA_DISPLAY_LIMIT).forEach { holding ->
+                        displayedToken2022Holdings.forEach { holding ->
                             TokenHoldingRow(holding)
                         }
                     }
@@ -841,7 +1156,14 @@ private fun WalletDataSections(
         }
         Spacer(modifier = Modifier.height(14.dp))
         SectionCard {
-            SectionHeading(stringResource(R.string.recent_wallet_activity))
+            SectionHeading(
+                stringResource(
+                    if (state.demoMode) R.string.demo_recent_wallet_activity else R.string.recent_wallet_activity,
+                ),
+            )
+            if (state.walletDataStale) {
+                WalletDataFreshness(state)
+            }
             when {
                 // CPD-OFF
                 state.walletDataLoading && state.recentWalletActivity.isEmpty() -> {
@@ -874,19 +1196,38 @@ private fun WalletDataSections(
                 else -> {
                     state.recentWalletActivity
                         .take(WALLET_DATA_DISPLAY_LIMIT)
-                        .forEach { activity -> WalletActivityRow(activity) }
+                        .forEach { activity ->
+                            WalletActivityRow(activity, state.walletDataStale, state.demoMode)
+                        }
                 }
             }
         }
     }
 }
 
+internal fun walletHoldingsForDisplay(holdings: List<WalletTokenHolding>): List<WalletTokenHolding> {
+    val standard = holdings.filterNot { holding -> holding.isToken2022 }
+    val token2022 = holdings.filter { holding -> holding.isToken2022 }
+    if (standard.isEmpty()) return token2022.take(WALLET_DATA_DISPLAY_LIMIT)
+    if (token2022.isEmpty()) return standard.take(WALLET_DATA_DISPLAY_LIMIT)
+    val displayedStandard = standard.take(WALLET_DATA_DISPLAY_LIMIT - 1)
+    return displayedStandard + token2022.take(WALLET_DATA_DISPLAY_LIMIT - displayedStandard.size)
+}
+
 @Composable
-private fun WalletDataFreshness(state: PersistedAppState) {
+private fun WalletDataFreshness(state: WalletScreenState) {
     Column(modifier = Modifier.fillMaxWidth()) {
+        if (state.demoMode) {
+            Text(
+                text = stringResource(R.string.demo_wallet_data_fixed),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            return@Column
+        }
         state.walletDataUpdatedAtMillis?.let { updatedAt ->
             Text(
-                text = stringResource(R.string.wallet_data_updated_at, Instant.ofEpochMilli(updatedAt).toString()),
+                text = stringResource(R.string.wallet_data_updated_at, formattedTimestamp(updatedAt)),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -921,7 +1262,11 @@ private fun TokenHoldingRow(holding: WalletTokenHolding) {
             text =
                 stringResource(
                     R.string.token_amount_details,
-                    holding.formattedAmount,
+                    formatUserNumber(
+                        value = BigDecimal(holding.amountAtomic, holding.decimals).stripTrailingZeros(),
+                        maximumFractionDigits = holding.decimals,
+                        locale = LocalConfiguration.current.locales[0],
+                    ),
                     holding.amountAtomic.toString(),
                 ),
             style = MaterialTheme.typography.bodyMedium,
@@ -937,32 +1282,48 @@ private fun TokenHoldingRow(holding: WalletTokenHolding) {
 
 @Composable
 // CPD-OFF
-private fun WalletActivityRow(activity: WalletActivity) {
+private fun WalletActivityRow(
+    activity: WalletActivity,
+    stale: Boolean,
+    demoMode: Boolean,
+) {
     Column(modifier = Modifier.fillMaxWidth()) {
         HorizontalDivider(color = StartExOutline, modifier = Modifier.padding(vertical = 10.dp))
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
             Text(stringResource(R.string.transaction_signature), style = MaterialTheme.typography.titleSmall)
+            Spacer(modifier = Modifier.height(6.dp))
             StatusPill(
                 text =
                     stringResource(
-                        if (activity.failed) R.string.transaction_failed else R.string.transaction_observed,
+                        when {
+                            demoMode -> R.string.demo_transaction_synthetic
+                            activity.failed -> R.string.transaction_failed
+                            stale -> R.string.transaction_observed_stale
+                            else -> R.string.transaction_observed
+                        },
                     ),
-                color = if (activity.failed) StartExRed else StartExGreen,
+                color =
+                    when {
+                        demoMode -> StartExAmber
+                        activity.failed -> StartExRed
+                        stale -> StartExAmber
+                        else -> StartExGreen
+                    },
             )
         }
         AddressText(activity.signature, abbreviated = true)
         Text(
-            text = stringResource(R.string.wallet_activity_slot, activity.slot),
+            text =
+                stringResource(
+                    if (demoMode) R.string.demo_synthetic_slot else R.string.wallet_activity_slot,
+                    activity.slot,
+                ),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         activity.blockTimeMillis?.let { timestamp ->
             Text(
-                text = Instant.ofEpochMilli(timestamp).toString(),
+                text = formattedTimestamp(timestamp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -989,22 +1350,42 @@ fun HistoryScreen(
     onExportJson: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    HistoryScreen(
+        state = state.historyScreenState(),
+        onExportCsv = onExportCsv,
+        onExportJson = onExportJson,
+        modifier = modifier,
+    )
+}
+
+@Composable
+internal fun HistoryScreen(
+    state: HistoryScreenState,
+    onExportCsv: () -> Unit,
+    onExportJson: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     var modeFilter by rememberSaveable { mutableStateOf(HistoryModeFilter.All) }
     var dateFilter by rememberSaveable { mutableStateOf(HistoryDateFilter.All) }
-    val nowMillis = remember { System.currentTimeMillis() }
+    var nowMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            nowMillis = System.currentTimeMillis()
+            delay(millisUntilNextUtcDay(nowMillis))
+        }
+    }
     val trades = filterTradeHistory(state.tradeHistory, modeFilter, dateFilter, nowMillis)
-    val performance =
-        summarizeDailyPerformance(
-            state.dailyPerformance,
-            modeFilter,
-            dateFilter,
-            nowMillis,
-        )
+    val performance = summarizeTradeHistory(trades)
+    val exportDisabledReason =
+        if (state.demoMode) stringResource(R.string.history_export_unavailable_demo) else null
 
     ScreenColumn(modifier = modifier) {
         ScreenHeader(
             title = stringResource(R.string.history_title),
-            subtitle = stringResource(R.string.history_actual_subtitle),
+            subtitle =
+                stringResource(
+                    if (state.demoMode) R.string.demo_history_subtitle else R.string.history_actual_subtitle,
+                ),
         )
         if (state.demoMode) {
             Spacer(modifier = Modifier.height(14.dp))
@@ -1022,7 +1403,10 @@ fun HistoryScreen(
             )
             if (performance == null) {
                 Text(
-                    text = stringResource(R.string.performance_empty),
+                    text =
+                        stringResource(
+                            if (state.demoMode) R.string.demo_performance_hidden else R.string.performance_empty,
+                        ),
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 12.dp),
                 )
@@ -1055,8 +1439,14 @@ fun HistoryScreen(
         if (trades.isEmpty()) {
             EmptyState(
                 icon = Icons.Outlined.History,
-                title = stringResource(R.string.trade_history_empty_title),
-                body = stringResource(R.string.trade_history_empty_body),
+                title =
+                    stringResource(
+                        if (state.demoMode) R.string.demo_history_hidden_title else R.string.trade_history_empty_title,
+                    ),
+                body =
+                    stringResource(
+                        if (state.demoMode) R.string.demo_history_hidden_body else R.string.trade_history_empty_body,
+                    ),
                 modifier = Modifier.padding(vertical = 24.dp),
             )
         } else {
@@ -1076,7 +1466,10 @@ fun HistoryScreen(
                 modifier =
                     Modifier
                         .weight(1f)
-                        .heightIn(min = 48.dp),
+                        .heightIn(min = 48.dp)
+                        .semantics {
+                            exportDisabledReason?.let { stateDescription = it }
+                        },
             ) {
                 Text(stringResource(R.string.export_csv))
             }
@@ -1086,10 +1479,21 @@ fun HistoryScreen(
                 modifier =
                     Modifier
                         .weight(1f)
-                        .heightIn(min = 48.dp),
+                        .heightIn(min = 48.dp)
+                        .semantics {
+                            exportDisabledReason?.let { stateDescription = it }
+                        },
             ) {
                 Text(stringResource(R.string.export_json))
             }
+        }
+        if (exportDisabledReason != null) {
+            Text(
+                text = exportDisabledReason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 12.dp),
+            )
         }
         Text(
             text = stringResource(R.string.export_redaction_note),
@@ -1120,7 +1524,7 @@ private fun HistoryModeFilters(
                     Text(
                         stringResource(
                             when (filter) {
-                                HistoryModeFilter.All -> R.string.filter_all
+                                HistoryModeFilter.All -> R.string.filter_all_modes
                                 HistoryModeFilter.Paper -> R.string.mode_paper
                                 HistoryModeFilter.Live -> R.string.mode_live
                             },
@@ -1153,7 +1557,7 @@ private fun HistoryDateFilters(
                     Text(
                         stringResource(
                             when (filter) {
-                                HistoryDateFilter.All -> R.string.filter_all
+                                HistoryDateFilter.All -> R.string.filter_all_dates
                                 HistoryDateFilter.Today -> R.string.filter_today
                                 HistoryDateFilter.SevenDays -> R.string.filter_seven_days
                             },
@@ -1179,7 +1583,10 @@ private fun TradeHistoryCard(trade: TradeExportRow) {
                     trade.symbol?.takeIf { symbol -> symbol.isNotBlank() }
                         ?: stringResource(R.string.unknown_token),
                 style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.weight(1f),
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .semantics { heading() },
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1208,7 +1615,7 @@ private fun TradeHistoryCard(trade: TradeExportRow) {
             stringResource(
                 R.string.trade_score_strategy_value,
                 trade.entryScore?.toString() ?: stringResource(R.string.value_unavailable),
-                trade.strategyVersion?.let { version -> "v$version" }
+                trade.strategyVersion?.let { version -> stringResource(R.string.strategy_version_value, version) }
                     ?: stringResource(R.string.value_unavailable),
             ),
         )
@@ -1218,11 +1625,11 @@ private fun TradeHistoryCard(trade: TradeExportRow) {
         )
         MetricRow(
             stringResource(R.string.trade_time),
-            Instant.ofEpochMilli(trade.createdAtMillis).toString(),
+            formattedTimestamp(trade.createdAtMillis),
         )
         MetricRow(
             stringResource(R.string.fees_paid),
-            "${formatSol(trade.totalFeeLamports)} SOL",
+            stringResource(R.string.sol_balance_value, formatSol(trade.totalFeeLamports)),
         )
     }
 }
@@ -1239,7 +1646,7 @@ internal fun filterTradeHistory(
             .atZone(ZoneOffset.UTC)
             .toLocalDate()
             .toEpochDay()
-    return rows.filter { row ->
+    return rows.take(HISTORY_DISPLAY_LIMIT).filter { row ->
         val modeMatches =
             when (modeFilter) {
                 HistoryModeFilter.All -> true
@@ -1250,41 +1657,31 @@ internal fun filterTradeHistory(
     }
 }
 
-internal fun summarizeDailyPerformance(
-    rows: List<DailyPerformanceEntity>,
-    modeFilter: HistoryModeFilter,
-    dateFilter: HistoryDateFilter,
-    nowMillis: Long,
-): ActualPerformanceSummary? {
-    val today =
-        Instant
-            .ofEpochMilli(nowMillis)
-            .atZone(ZoneOffset.UTC)
-            .toLocalDate()
-            .toEpochDay()
-    val selected =
-        rows.filter { row ->
-            val modeMatches =
-                when (modeFilter) {
-                    HistoryModeFilter.All -> true
-                    HistoryModeFilter.Paper -> row.mode == DailyPerformanceEntity.MODE_PAPER
-                    HistoryModeFilter.Live -> row.mode == DailyPerformanceEntity.MODE_LIVE
-                }
-            modeMatches && dateMatches(row.epochDay, dateFilter, today)
+internal fun summarizeTradeHistory(rows: List<TradeExportRow>): ActualPerformanceSummary? {
+    if (rows.isEmpty()) return null
+    var netPnlLamports = BigInteger.ZERO
+    var totalFeesLamports = BigInteger.ZERO
+    var wins = 0L
+    var losses = 0L
+    rows.forEach { row ->
+        totalFeesLamports += BigInteger.valueOf(row.totalFeeLamports)
+        val realizedNetPnl = row.realizedNetPnlLamports() ?: return@forEach
+        netPnlLamports += realizedNetPnl
+        if (realizedNetPnl.signum() >= 0) wins++ else losses++
+    }
+    return ActualPerformanceSummary(netPnlLamports, totalFeesLamports, wins, losses)
+}
+
+private fun TradeExportRow.realizedNetPnlLamports(): BigInteger? {
+    if (side != "SELL" || closedAtMillis == null) return null
+    val outputAtomic =
+        when (mode) {
+            DailyPerformanceEntity.MODE_PAPER -> expectedOutputAtomic
+            DailyPerformanceEntity.MODE_LIVE -> actualOutputAtomic ?: return null
+            else -> return null
         }
-    if (selected.isEmpty()) return null
-    return ActualPerformanceSummary(
-        netPnlLamports =
-            selected.fold(BigInteger.ZERO) { total, row ->
-                total + BigInteger.valueOf(row.netPnlLamports)
-            },
-        totalFeesLamports =
-            selected.fold(BigInteger.ZERO) { total, row ->
-                total + BigInteger.valueOf(row.totalFeesLamports)
-            },
-        wins = selected.sumOf { row -> row.winCount.toLong() },
-        losses = selected.sumOf { row -> row.lossCount.toLong() },
-    )
+    val inputLamports = grossInputLamports ?: return null
+    return outputAtomic.toBigIntegerOrNull()?.subtract(BigInteger.valueOf(inputLamports))
 }
 
 private fun dateMatches(
@@ -1305,6 +1702,19 @@ private fun Long.utcEpochDay(): Long =
         .toLocalDate()
         .toEpochDay()
 
+internal fun millisUntilNextUtcDay(nowMillis: Long): Long {
+    val nextDayStart =
+        Instant
+            .ofEpochMilli(nowMillis)
+            .atZone(ZoneOffset.UTC)
+            .toLocalDate()
+            .plusDays(1)
+            .atStartOfDay(ZoneOffset.UTC)
+            .toInstant()
+            .toEpochMilli()
+    return (nextDayStart - nowMillis).coerceAtLeast(1L)
+}
+
 @Composable
 internal fun SecurityModeControl(
     state: PersistedAppState,
@@ -1315,12 +1725,38 @@ internal fun SecurityModeControl(
     var dedicatedWalletAcknowledged by rememberSaveable { mutableStateOf(false) }
     var reducedSecurityAcknowledged by rememberSaveable { mutableStateOf(false) }
     val controlsEnabled = !state.demoMode && state.monitorState == MonitorState.Stopped
+    val disabledReason =
+        if (controlsEnabled) {
+            null
+        } else {
+            stringResource(
+                if (state.demoMode) {
+                    R.string.demo_action_unavailable
+                } else {
+                    R.string.security_mode_requires_stopped_monitoring
+                },
+            )
+        }
 
-    Column(modifier = Modifier.fillMaxWidth()) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(modifier = Modifier.fillMaxWidth().selectableGroup()) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .selectable(
+                        selected = !state.unattendedMode,
+                        enabled = controlsEnabled,
+                        role = Role.RadioButton,
+                        onClick = { if (state.unattendedMode) showDisableDialog = true },
+                    ).semantics {
+                        disabledReason?.let { stateDescription = it }
+                    },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
             RadioButton(
                 selected = !state.unattendedMode,
-                onClick = { if (state.unattendedMode) showDisableDialog = true },
+                onClick = null,
                 enabled = controlsEnabled,
             )
             Column(modifier = Modifier.weight(1f)) {
@@ -1334,12 +1770,24 @@ internal fun SecurityModeControl(
         }
         HorizontalDivider(color = StartExOutline)
         Row(
-            modifier = Modifier.padding(top = 8.dp),
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 56.dp)
+                    .padding(top = 8.dp)
+                    .selectable(
+                        selected = state.unattendedMode,
+                        enabled = controlsEnabled,
+                        role = Role.RadioButton,
+                        onClick = { if (!state.unattendedMode) showEnableDialog = true },
+                    ).semantics {
+                        disabledReason?.let { stateDescription = it }
+                    },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             RadioButton(
                 selected = state.unattendedMode,
-                onClick = { if (!state.unattendedMode) showEnableDialog = true },
+                onClick = null,
                 enabled = controlsEnabled,
             )
             Column(modifier = Modifier.weight(1f)) {
@@ -1375,6 +1823,21 @@ internal fun SecurityModeControl(
                 )
             }
         }
+        if (!controlsEnabled) {
+            Text(
+                text =
+                    stringResource(
+                        if (state.demoMode) {
+                            R.string.demo_action_unavailable
+                        } else {
+                            R.string.security_mode_requires_stopped_monitoring
+                        },
+                    ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp),
+            )
+        }
 
         if (showEnableDialog) {
             val canEnable =
@@ -1391,24 +1854,45 @@ internal fun SecurityModeControl(
                     dedicatedWalletAcknowledged = false
                     reducedSecurityAcknowledged = false
                 },
+                modifier = Modifier.verticalScroll(rememberScrollState()),
                 title = { Text(stringResource(R.string.enable_unattended_title)) },
                 text = {
                     Column {
                         Text(stringResource(R.string.enable_unattended_body))
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .toggleable(
+                                        value = dedicatedWalletAcknowledged,
+                                        role = Role.Checkbox,
+                                        onValueChange = { dedicatedWalletAcknowledged = it },
+                                    ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Checkbox(
                                 checked = dedicatedWalletAcknowledged,
-                                onCheckedChange = { dedicatedWalletAcknowledged = it },
+                                onCheckedChange = null,
                             )
                             Text(
                                 stringResource(R.string.unattended_ack_dedicated_wallet),
                                 modifier = Modifier.weight(1f),
                             )
                         }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
+                        Row(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .toggleable(
+                                        value = reducedSecurityAcknowledged,
+                                        role = Role.Checkbox,
+                                        onValueChange = { reducedSecurityAcknowledged = it },
+                                    ),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
                             Checkbox(
                                 checked = reducedSecurityAcknowledged,
-                                onCheckedChange = { reducedSecurityAcknowledged = it },
+                                onCheckedChange = null,
                             )
                             Text(
                                 stringResource(R.string.unattended_ack_reduced_security),
@@ -1424,25 +1908,36 @@ internal fun SecurityModeControl(
                     }
                 },
                 confirmButton = {
-                    TextButton(
-                        onClick = {
-                            showEnableDialog = false
-                            onRequestSecurityMode(
-                                true,
-                                dedicatedWalletAcknowledged,
-                                reducedSecurityAcknowledged,
-                            )
-                            dedicatedWalletAcknowledged = false
-                            reducedSecurityAcknowledged = false
-                        },
-                        enabled = canEnable,
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        Text(stringResource(R.string.enable_unattended_action))
-                    }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showEnableDialog = false }) {
-                        Text(stringResource(R.string.cancel))
+                        TextButton(
+                            onClick = {
+                                showEnableDialog = false
+                                onRequestSecurityMode(
+                                    true,
+                                    dedicatedWalletAcknowledged,
+                                    reducedSecurityAcknowledged,
+                                )
+                                dedicatedWalletAcknowledged = false
+                                reducedSecurityAcknowledged = false
+                            },
+                            enabled = canEnable,
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text(stringResource(R.string.enable_unattended_action))
+                        }
+                        TextButton(
+                            onClick = {
+                                showEnableDialog = false
+                                dedicatedWalletAcknowledged = false
+                                reducedSecurityAcknowledged = false
+                            },
+                            modifier = Modifier.heightIn(min = 48.dp),
+                        ) {
+                            Text(stringResource(R.string.cancel))
+                        }
                     }
                 },
             )
@@ -1490,7 +1985,52 @@ internal data class ConfigurationInputs(
     val strategy: StrategyConfigurationInput,
 )
 
+private val configurationInputsSaver =
+    listSaver<ConfigurationInputs, String>(
+        save = { inputs ->
+            listOf(
+                inputs.risk.maximumTradeSol,
+                inputs.risk.maximumExposureSol,
+                inputs.risk.maximumOpenPositions,
+                inputs.risk.maximumDailyLossSol,
+                inputs.risk.feeReserveSol,
+                inputs.risk.maximumSlippagePercent,
+                inputs.risk.maximumHoldMinutes,
+                inputs.strategy.minimumScore,
+                inputs.strategy.takeProfitPercent,
+                inputs.strategy.hardStopPercent,
+                inputs.strategy.trailingActivationPercent,
+                inputs.strategy.trailingDistancePercent,
+                inputs.strategy.observationSeconds,
+            )
+        },
+        restore = { values ->
+            ConfigurationInputs(
+                risk =
+                    RiskConfigurationInput(
+                        maximumTradeSol = values[0],
+                        maximumExposureSol = values[1],
+                        maximumOpenPositions = values[2],
+                        maximumDailyLossSol = values[3],
+                        feeReserveSol = values[4],
+                        maximumSlippagePercent = values[5],
+                        maximumHoldMinutes = values[6],
+                    ),
+                strategy =
+                    StrategyConfigurationInput(
+                        minimumScore = values[7],
+                        takeProfitPercent = values[8],
+                        hardStopPercent = values[9],
+                        trailingActivationPercent = values[10],
+                        trailingDistancePercent = values[11],
+                        observationSeconds = values[12],
+                    ),
+            )
+        },
+    )
+
 @Composable
+@Suppress("LongMethod")
 fun ConfigurationEditorScreen(
     state: PersistedAppState,
     saveState: ConfigurationSaveState,
@@ -1521,10 +2061,12 @@ fun ConfigurationEditorScreen(
         }
         return
     }
-    var inputs by remember(risk.version, strategy.version) {
+    var inputs by rememberSaveable(risk.version, strategy.version, stateSaver = configurationInputsSaver) {
         mutableStateOf(configurationInputs(risk, strategy))
     }
-    val invalidField = (saveState as? ConfigurationSaveState.Invalid)?.error?.field
+    val validationError = (saveState as? ConfigurationSaveState.Invalid)?.error
+    val invalidField = validationError?.field
+    val validationMessage = validationError?.let { configurationValidationMessage(it) }
     val saving = saveState is ConfigurationSaveState.Saving
     val editingEnabled = state.configurationEditingAllowed && !saving
 
@@ -1567,7 +2109,8 @@ fun ConfigurationEditorScreen(
                 label = stringResource(R.string.config_max_trade),
                 unit = stringResource(R.string.unit_sol),
                 range = "${ConfigurationSafeRanges.minimumTradeSol}–${ConfigurationSafeRanges.maximumTradeSol}",
-                isError = invalidField == ConfigurationField.MAXIMUM_TRADE_SOL,
+                errorMessage =
+                    if (invalidField == ConfigurationField.MAXIMUM_TRADE_SOL) validationMessage else null,
             )
             ConfigurationFieldInput(
                 value = inputs.risk.maximumExposureSol,
@@ -1582,7 +2125,8 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.minimumExposureSol,
                         ConfigurationSafeRanges.maximumExposureSol,
                     ),
-                isError = invalidField == ConfigurationField.MAXIMUM_EXPOSURE_SOL,
+                errorMessage =
+                    if (invalidField == ConfigurationField.MAXIMUM_EXPOSURE_SOL) validationMessage else null,
             )
             ConfigurationFieldInput(
                 value = inputs.risk.maximumOpenPositions,
@@ -1597,7 +2141,9 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.MINIMUM_OPEN_POSITIONS,
                         ConfigurationSafeRanges.MAXIMUM_OPEN_POSITIONS,
                     ),
-                isError = invalidField == ConfigurationField.MAXIMUM_OPEN_POSITIONS,
+                errorMessage =
+                    if (invalidField == ConfigurationField.MAXIMUM_OPEN_POSITIONS) validationMessage else null,
+                keyboardType = KeyboardType.Number,
             )
             ConfigurationFieldInput(
                 value = inputs.risk.maximumDailyLossSol,
@@ -1612,7 +2158,8 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.minimumDailyLossSol,
                         ConfigurationSafeRanges.maximumDailyLossSol,
                     ),
-                isError = invalidField == ConfigurationField.MAXIMUM_DAILY_LOSS_SOL,
+                errorMessage =
+                    if (invalidField == ConfigurationField.MAXIMUM_DAILY_LOSS_SOL) validationMessage else null,
             )
             ConfigurationFieldInput(
                 value = inputs.risk.feeReserveSol,
@@ -1625,7 +2172,8 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.minimumFeeReserveSol,
                         ConfigurationSafeRanges.maximumFeeReserveSol,
                     ),
-                isError = invalidField == ConfigurationField.FEE_RESERVE_SOL,
+                errorMessage =
+                    if (invalidField == ConfigurationField.FEE_RESERVE_SOL) validationMessage else null,
             )
             ConfigurationFieldInput(
                 value = inputs.risk.maximumSlippagePercent,
@@ -1640,7 +2188,8 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.minimumSlippagePercent,
                         ConfigurationSafeRanges.maximumSlippagePercent,
                     ),
-                isError = invalidField == ConfigurationField.MAXIMUM_SLIPPAGE_PERCENT,
+                errorMessage =
+                    if (invalidField == ConfigurationField.MAXIMUM_SLIPPAGE_PERCENT) validationMessage else null,
             )
             ConfigurationFieldInput(
                 value = inputs.risk.maximumHoldMinutes,
@@ -1653,7 +2202,9 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.MINIMUM_HOLD_MINUTES,
                         ConfigurationSafeRanges.MAXIMUM_HOLD_MINUTES,
                     ),
-                isError = invalidField == ConfigurationField.MAXIMUM_HOLD_MINUTES,
+                errorMessage =
+                    if (invalidField == ConfigurationField.MAXIMUM_HOLD_MINUTES) validationMessage else null,
+                keyboardType = KeyboardType.Number,
             )
         }
         Spacer(modifier = Modifier.height(14.dp))
@@ -1672,7 +2223,9 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.MINIMUM_SCORE,
                         ConfigurationSafeRanges.MAXIMUM_SCORE,
                     ),
-                isError = invalidField == ConfigurationField.MINIMUM_SCORE,
+                errorMessage =
+                    if (invalidField == ConfigurationField.MINIMUM_SCORE) validationMessage else null,
+                keyboardType = KeyboardType.Number,
             )
             ConfigurationFieldInput(
                 value = inputs.strategy.takeProfitPercent,
@@ -1687,7 +2240,8 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.minimumTakeProfitPercent,
                         ConfigurationSafeRanges.maximumTakeProfitPercent,
                     ),
-                isError = invalidField == ConfigurationField.TAKE_PROFIT_PERCENT,
+                errorMessage =
+                    if (invalidField == ConfigurationField.TAKE_PROFIT_PERCENT) validationMessage else null,
             )
             ConfigurationFieldInput(
                 value = inputs.strategy.hardStopPercent,
@@ -1702,7 +2256,8 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.minimumHardStopPercent,
                         ConfigurationSafeRanges.maximumHardStopPercent,
                     ),
-                isError = invalidField == ConfigurationField.HARD_STOP_PERCENT,
+                errorMessage =
+                    if (invalidField == ConfigurationField.HARD_STOP_PERCENT) validationMessage else null,
             )
             ConfigurationFieldInput(
                 value = inputs.strategy.trailingActivationPercent,
@@ -1717,7 +2272,8 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.minimumTrailingActivationPercent,
                         ConfigurationSafeRanges.maximumTrailingActivationPercent,
                     ),
-                isError = invalidField == ConfigurationField.TRAILING_ACTIVATION_PERCENT,
+                errorMessage =
+                    if (invalidField == ConfigurationField.TRAILING_ACTIVATION_PERCENT) validationMessage else null,
             )
             ConfigurationFieldInput(
                 value = inputs.strategy.trailingDistancePercent,
@@ -1732,7 +2288,8 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.minimumTrailingDistancePercent,
                         ConfigurationSafeRanges.maximumTrailingDistancePercent,
                     ),
-                isError = invalidField == ConfigurationField.TRAILING_DISTANCE_PERCENT,
+                errorMessage =
+                    if (invalidField == ConfigurationField.TRAILING_DISTANCE_PERCENT) validationMessage else null,
             )
             ConfigurationFieldInput(
                 value = inputs.strategy.observationSeconds,
@@ -1747,7 +2304,10 @@ fun ConfigurationEditorScreen(
                         ConfigurationSafeRanges.MINIMUM_OBSERVATION_SECONDS,
                         ConfigurationSafeRanges.MAXIMUM_OBSERVATION_SECONDS,
                     ),
-                isError = invalidField == ConfigurationField.OBSERVATION_SECONDS,
+                errorMessage =
+                    if (invalidField == ConfigurationField.OBSERVATION_SECONDS) validationMessage else null,
+                keyboardType = KeyboardType.Number,
+                imeAction = ImeAction.Done,
             )
         }
         ConfigurationSaveStatus(saveState)
@@ -1799,22 +2359,45 @@ private fun ConfigurationFieldInput(
     label: String,
     unit: String,
     range: String,
-    isError: Boolean,
+    errorMessage: String?,
+    keyboardType: KeyboardType = KeyboardType.Decimal,
+    imeAction: ImeAction = ImeAction.Next,
 ) {
+    val focusManager = LocalFocusManager.current
+    val errorFocusRequester = remember { FocusRequester() }
+    val isError = errorMessage != null
+    LaunchedEffect(isError) {
+        if (isError) errorFocusRequester.requestFocus()
+    }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
         modifier =
             Modifier
                 .fillMaxWidth()
-                .padding(top = 10.dp),
+                .focusRequester(errorFocusRequester)
+                .then(
+                    if (errorMessage == null) {
+                        Modifier
+                    } else {
+                        Modifier.semantics { error(errorMessage) }
+                    },
+                ).padding(top = 10.dp),
         label = { Text(label) },
         suffix = { Text(unit) },
-        supportingText = { Text(stringResource(R.string.configuration_safe_range, range, unit)) },
+        supportingText = {
+            Text(errorMessage ?: stringResource(R.string.configuration_safe_range, range, unit))
+        },
         enabled = enabled,
         isError = isError,
         singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+        textStyle = LocalTextStyle.current.copy(textDirection = TextDirection.ContentOrLtr),
+        keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = imeAction),
+        keyboardActions =
+            KeyboardActions(
+                onNext = { focusManager.moveFocus(FocusDirection.Next) },
+                onDone = { focusManager.clearFocus() },
+            ),
     )
 }
 
@@ -1857,27 +2440,36 @@ private fun ConfigurationSaveStatus(state: ConfigurationSaveState) {
         }
 
         is ConfigurationSaveState.Invalid -> {
-            ConfigurationValidationError(state.error)
+            if (
+                state.error.field == ConfigurationField.VERSION ||
+                state.error.field == ConfigurationField.CREATED_AT
+            ) {
+                ConfigurationValidationError(state.error)
+            }
         }
     }
 }
 
 @Composable
 private fun ConfigurationValidationError(error: ConfigurationFieldError) {
-    val field = stringResource(configurationFieldLabel(error.field))
-    val reason = stringResource(configurationErrorLabel(error.code))
-    val related = error.relatedField?.let { stringResource(configurationFieldLabel(it)) }
     Text(
-        text =
-            if (related == null) {
-                stringResource(R.string.configuration_invalid_value, field, reason)
-            } else {
-                stringResource(R.string.configuration_invalid_related, field, reason, related)
-            },
+        text = configurationValidationMessage(error),
         color = StartExRed,
         style = MaterialTheme.typography.bodyMedium,
         modifier = Modifier.padding(top = 12.dp),
     )
+}
+
+@Composable
+private fun configurationValidationMessage(error: ConfigurationFieldError): String {
+    val field = stringResource(configurationFieldLabel(error.field))
+    val reason = stringResource(configurationErrorLabel(error.code))
+    val related = error.relatedField?.let { stringResource(configurationFieldLabel(it)) }
+    return if (related == null) {
+        stringResource(R.string.configuration_invalid_value, field, reason)
+    } else {
+        stringResource(R.string.configuration_invalid_related, field, reason, related)
+    }
 }
 
 internal fun configurationInputs(
@@ -1960,18 +2552,23 @@ private fun configurationErrorLabel(code: ConfigurationErrorCode): Int =
     }
 
 @Composable
+@Suppress("LongParameterList")
 fun SettingsScreen(
     state: PersistedAppState,
     onProviders: () -> Unit,
     onPreflight: () -> Unit,
-    onLock: () -> Unit,
     onStop: () -> Unit,
     onSetDemoMode: (Boolean) -> Unit,
     onRequestSecurityMode: (Boolean, Boolean, Boolean) -> Unit,
     onStrategyAndRisk: () -> Unit,
     onBatteryOptimizationSettings: () -> Unit,
     modifier: Modifier = Modifier,
+    notificationsAllowed: Boolean = false,
+    providersFocusRequester: FocusRequester? = null,
+    strategyFocusRequester: FocusRequester? = null,
+    healthFocusRequester: FocusRequester? = null,
 ) {
+    val demoDisabledReason = if (state.demoMode) stringResource(R.string.demo_action_unavailable) else null
     ScreenColumn(modifier = modifier) {
         ScreenHeader(title = stringResource(R.string.settings_title))
         if (state.demoMode) {
@@ -1983,11 +2580,27 @@ fun SettingsScreen(
             SettingsRow(
                 icon = Icons.Outlined.Visibility,
                 title = stringResource(R.string.demo_mode),
-                supportingText = stringResource(R.string.demo_mode_settings_body),
+                supportingText =
+                    stringResource(
+                        if (!state.demoMode && state.monitorState != MonitorState.Stopped) {
+                            R.string.demo_requires_stopped_monitoring
+                        } else {
+                            R.string.demo_mode_settings_body
+                        },
+                    ),
+                onClick = { onSetDemoMode(!state.demoMode) },
+                enabled = state.demoMode || state.monitorState == MonitorState.Stopped,
+                disabledReason =
+                    if (!state.demoMode && state.monitorState != MonitorState.Stopped) {
+                        stringResource(R.string.demo_requires_stopped_monitoring)
+                    } else {
+                        null
+                    },
+                toggleState = state.demoMode,
             ) {
                 Switch(
                     checked = state.demoMode,
-                    onCheckedChange = onSetDemoMode,
+                    onCheckedChange = null,
                     enabled = state.demoMode || state.monitorState == MonitorState.Stopped,
                 )
             }
@@ -2019,8 +2632,15 @@ fun SettingsScreen(
                             it.maximumTradesPerDay,
                         )
                     } ?: stringResource(R.string.status_action_required),
-                onClick = onStrategyAndRisk.takeUnless { state.demoMode },
-            ) { Icon(Icons.Outlined.ChevronRight, contentDescription = null) }
+                onClick = onStrategyAndRisk,
+                enabled = !state.demoMode,
+                disabledReason = demoDisabledReason,
+                focusRequester = strategyFocusRequester,
+            ) {
+                if (!state.demoMode) {
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+                }
+            }
             SettingsRow(
                 icon = Icons.Outlined.SettingsEthernet,
                 title = stringResource(R.string.settings_providers),
@@ -2032,7 +2652,10 @@ fun SettingsScreen(
                         state.activatedProviders.size,
                         CredentialProviders.size,
                     ),
-                onClick = onProviders.takeUnless { state.demoMode },
+                onClick = onProviders,
+                enabled = !state.demoMode,
+                disabledReason = demoDisabledReason,
+                focusRequester = providersFocusRequester,
             ) {
                 StatusPill(
                     text =
@@ -2044,6 +2667,7 @@ fun SettingsScreen(
                             },
                         ),
                     color = if (state.providersHealthy) StartExGreen else StartExAmber,
+                    modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
             }
             SettingsRow(
@@ -2057,7 +2681,6 @@ fun SettingsScreen(
                             R.string.secure_session_active
                         },
                     ),
-                onClick = onLock.takeUnless { state.demoMode },
             ) { Icon(Icons.Outlined.Lock, contentDescription = null) }
             SecurityModeControl(
                 state = state,
@@ -2067,19 +2690,38 @@ fun SettingsScreen(
                 icon = Icons.Outlined.Notifications,
                 title = stringResource(R.string.settings_notifications),
                 supportingText = stringResource(R.string.notifications_system_managed),
-            )
+            ) {
+                StatusPill(
+                    text =
+                        stringResource(
+                            if (notificationsAllowed) R.string.status_ready else R.string.status_action_required,
+                        ),
+                    color = if (notificationsAllowed) StartExGreen else StartExAmber,
+                    modifier =
+                        Modifier
+                            .testTag("settings_notification_status")
+                            .semantics { liveRegion = LiveRegionMode.Polite },
+                )
+            }
             SettingsRow(
                 icon = Icons.Outlined.BatteryChargingFull,
                 title = stringResource(R.string.settings_health),
                 supportingText = stringResource(R.string.session_limit_short),
-                onClick = onPreflight.takeUnless { state.demoMode },
-            ) { Icon(Icons.Outlined.ChevronRight, contentDescription = null) }
+                onClick = onPreflight,
+                enabled = !state.demoMode,
+                disabledReason = demoDisabledReason,
+                focusRequester = healthFocusRequester,
+            ) {
+                if (!state.demoMode) {
+                    Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null)
+                }
+            }
             SettingsRow(
                 icon = Icons.Outlined.BatteryChargingFull,
                 title = stringResource(R.string.battery_optimization_title),
                 supportingText = stringResource(R.string.battery_optimization_body),
                 onClick = onBatteryOptimizationSettings,
-            ) { Icon(Icons.Outlined.ChevronRight, contentDescription = null) }
+            ) { Icon(Icons.AutoMirrored.Outlined.KeyboardArrowRight, contentDescription = null) }
             SettingsRow(
                 icon = Icons.Outlined.DataObject,
                 title = stringResource(R.string.settings_data),
@@ -2129,8 +2771,28 @@ fun PreflightScreen(
     onRequestNotifications: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ScreenColumn(modifier = modifier) {
-        ScreenHeader(title = stringResource(R.string.preflight_title))
+    BackHandler(onBack = onBack)
+    val title = stringResource(R.string.preflight_title)
+    val blockingChecks =
+        buildList {
+            if (!state.walletReady) add(stringResource(R.string.check_wallet))
+            if (!state.backupVerified) add(stringResource(R.string.check_backup))
+            if (!state.providersHealthy) add(stringResource(R.string.check_providers))
+            if (!state.limitsConfigured) add(stringResource(R.string.check_limits))
+            if (state.reserveRequired && !state.reserveReady) add(stringResource(R.string.check_reserve))
+            if (!state.notificationsAllowed) add(stringResource(R.string.check_notifications))
+            if (!state.deviceHealthReady) add(stringResource(R.string.check_device_health))
+        }
+    val checklistBlockedReason =
+        blockingChecks.takeIf { it.isNotEmpty() }?.let {
+            stringResource(R.string.preflight_blocked, it.joinToString(separator = "; "))
+        }
+    val liveBlockedReason =
+        if (mode == TradingMode.Live) stringResource(R.string.live_locked_body) else null
+    val startDisabledReason = listOfNotNull(liveBlockedReason, checklistBlockedReason).joinToString(" ")
+
+    ScreenColumn(modifier = modifier.semantics { paneTitle = title }) {
+        ScreenHeader(title = title)
         Text(
             text = stringResource(R.string.preflight_intro),
             style = MaterialTheme.typography.bodyMedium,
@@ -2146,26 +2808,54 @@ fun PreflightScreen(
         )
         Spacer(modifier = Modifier.height(14.dp))
         SectionCard {
-            PreflightRow(stringResource(R.string.check_wallet), state.walletReady)
-            PreflightRow(stringResource(R.string.check_backup), state.backupVerified)
+            PreflightRow(
+                stringResource(R.string.check_wallet),
+                state.walletReady,
+                stringResource(R.string.preflight_wallet_required),
+            )
+            PreflightRow(
+                stringResource(R.string.check_backup),
+                state.backupVerified,
+                stringResource(R.string.preflight_backup_required),
+            )
             if (state.providersHealthy && !state.pumpHealthCheckedOnStart) {
                 PreflightReadyToConnectRow(stringResource(R.string.check_providers))
             } else {
-                PreflightRow(stringResource(R.string.check_providers), state.providersHealthy)
+                PreflightRow(
+                    stringResource(R.string.check_providers),
+                    state.providersHealthy,
+                    stringResource(R.string.preflight_providers_required),
+                )
             }
-            PreflightRow(stringResource(R.string.check_limits), state.limitsConfigured)
+            PreflightRow(
+                stringResource(R.string.check_limits),
+                state.limitsConfigured,
+                stringResource(R.string.preflight_limits_required),
+            )
             if (state.reserveRequired) {
-                PreflightRow(stringResource(R.string.check_reserve), state.reserveReady)
+                PreflightRow(
+                    stringResource(R.string.check_reserve),
+                    state.reserveReady,
+                    stringResource(R.string.preflight_reserve_required),
+                )
             } else {
                 PreflightNotRequiredRow(stringResource(R.string.check_reserve))
             }
-            PreflightRow(stringResource(R.string.check_notifications), state.notificationsAllowed)
-            PreflightRow(stringResource(R.string.check_device_health), state.deviceHealthReady)
+            PreflightRow(
+                stringResource(R.string.check_notifications),
+                state.notificationsAllowed,
+                stringResource(R.string.preflight_notifications_required),
+            )
+            PreflightRow(
+                stringResource(R.string.check_device_health),
+                state.deviceHealthReady,
+                stringResource(R.string.preflight_device_health_required),
+            )
         }
         Spacer(modifier = Modifier.height(22.dp))
-        if (!state.isReady) {
+        if (startDisabledReason.isNotEmpty()) {
             Text(
-                text = stringResource(R.string.preflight_blocked),
+                text = startDisabledReason,
                 color = StartExAmber,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(bottom = 12.dp),
@@ -2190,7 +2880,12 @@ fun PreflightScreen(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 48.dp),
+                    .heightIn(min = 48.dp)
+                    .semantics {
+                        if (startDisabledReason.isNotEmpty()) {
+                            stateDescription = startDisabledReason
+                        }
+                    },
         ) {
             Text(stringResource(R.string.start_paper_monitoring))
         }
@@ -2324,10 +3019,10 @@ private fun DeviceThermalStatus.displayValue(): String =
 
 @Composable
 fun LockScreen(
-    address: String,
     recoveryRequired: Boolean,
     onUnlock: () -> Unit,
     onRestore: () -> Unit,
+    onRecover: () -> Unit,
     onStop: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2351,9 +3046,8 @@ fun LockScreen(
             text = stringResource(R.string.wallet_locked_title),
             style = MaterialTheme.typography.headlineMedium,
             fontWeight = FontWeight.Bold,
+            modifier = Modifier.semantics { heading() },
         )
-        Spacer(modifier = Modifier.height(8.dp))
-        AddressText(address)
         Spacer(modifier = Modifier.height(12.dp))
         Text(
             text = stringResource(R.string.wallet_locked_body),
@@ -2367,6 +3061,7 @@ fun LockScreen(
                 text = stringResource(R.string.lock_recovery_warning),
                 style = MaterialTheme.typography.bodyMedium,
                 color = StartExAmber,
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
         Spacer(modifier = Modifier.height(24.dp))
@@ -2393,6 +3088,16 @@ fun LockScreen(
         if (recoveryRequired) {
             // CPD-OFF
             Spacer(modifier = Modifier.height(10.dp))
+            Button(
+                onClick = onRecover,
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp),
+            ) {
+                Text(stringResource(R.string.resume_recovery))
+            }
+            Spacer(modifier = Modifier.height(10.dp))
             OutlinedButton(
                 onClick = onStop,
                 modifier =
@@ -2418,11 +3123,13 @@ fun ProviderSetupScreen(
     onTest: (ProviderId) -> Unit,
     onBack: () -> Unit,
     modifier: Modifier = Modifier,
+    testingProviders: Set<ProviderId> = emptySet(),
 ) {
     BackHandler(onBack = onBack)
-    ScreenColumn(modifier = modifier) {
+    val title = stringResource(R.string.provider_setup_title)
+    ScreenColumn(modifier = modifier.semantics { paneTitle = title }) {
         ScreenHeader(
-            title = stringResource(R.string.provider_setup_title),
+            title = title,
             subtitle = stringResource(R.string.provider_setup_subtitle),
         )
         Spacer(modifier = Modifier.height(10.dp))
@@ -2441,12 +3148,14 @@ fun ProviderSetupScreen(
                 onSave = onSave,
                 onRemove = onRemove,
                 onTest = onTest,
+                testing = provider in testingProviders,
             )
             Spacer(modifier = Modifier.height(12.dp))
         }
         KeylessProviderCard(
             health = providerHealth.firstOrNull { it.provider == ProviderId.KRAKEN.name },
             onTest = { onTest(ProviderId.KRAKEN) },
+            testing = ProviderId.KRAKEN in testingProviders,
         )
         Spacer(modifier = Modifier.height(12.dp))
         OutlinedButton(
@@ -2470,8 +3179,15 @@ private fun ProviderCard(
     onSave: (ProviderId, CharArray) -> Unit,
     onRemove: (ProviderId) -> Unit,
     onTest: (ProviderId) -> Unit,
+    testing: Boolean,
 ) {
     var key by remember(provider) { mutableStateOf("") }
+    val focusManager = LocalFocusManager.current
+    val submitKey = {
+        val secret = key.toCharArray()
+        key = ""
+        onSave(provider, secret)
+    }
     val providerName =
         when (provider) {
             ProviderId.HELIUS -> "Helius"
@@ -2494,6 +3210,7 @@ private fun ProviderCard(
             StatusPill(
                 text = providerStatus(configured, active, health),
                 color = providerStatusColor(configured, active, health),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
         Spacer(modifier = Modifier.height(14.dp))
@@ -2501,13 +3218,33 @@ private fun ProviderCard(
             value = key,
             onValueChange = { key = it },
             modifier = Modifier.fillMaxWidth(),
-            label = { Text(stringResource(R.string.api_key)) },
-            supportingText = { Text(stringResource(R.string.api_key_not_recoverable)) },
+            label = { Text(stringResource(R.string.provider_api_key, providerName)) },
+            supportingText = {
+                Text(
+                    stringResource(
+                        if (key.isBlank()) {
+                            R.string.provider_key_save_requirement
+                        } else {
+                            R.string.api_key_not_recoverable
+                        },
+                    ),
+                )
+            },
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions =
                 KeyboardOptions(
                     autoCorrectEnabled = false,
                     keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done,
+                ),
+            keyboardActions =
+                KeyboardActions(
+                    onDone = {
+                        if (key.isNotBlank()) {
+                            focusManager.clearFocus()
+                            submitKey()
+                        }
+                    },
                 ),
             singleLine = true,
         )
@@ -2517,11 +3254,7 @@ private fun ProviderCard(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Button(
-                onClick = {
-                    val secret = key.toCharArray()
-                    key = ""
-                    onSave(provider, secret)
-                },
+                onClick = submitKey,
                 enabled = key.isNotBlank(),
                 modifier =
                     Modifier
@@ -2559,15 +3292,27 @@ private fun ProviderCard(
         }
         if (configured && active && provider != ProviderId.PUMP_PORTAL) {
             Spacer(modifier = Modifier.height(10.dp))
+            // Keyed and keyless providers intentionally expose the same read-only test control.
+            // CPD-OFF
             OutlinedButton(
                 onClick = { onTest(provider) },
+                enabled = !testing,
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .heightIn(min = 48.dp),
+                        .heightIn(min = 48.dp)
+                        .semantics {
+                            if (testing) liveRegion = LiveRegionMode.Polite
+                        },
             ) {
-                Text(stringResource(R.string.test_provider_read_only))
+                Text(
+                    stringResource(
+                        if (testing) R.string.provider_test_in_progress else R.string.test_provider_read_only,
+                        providerName,
+                    ),
+                )
             }
+            // CPD-ON
         }
         if (configured && active && provider == ProviderId.PUMP_PORTAL) {
             Text(
@@ -2584,6 +3329,7 @@ private fun ProviderCard(
 private fun KeylessProviderCard(
     health: ProviderHealthEntity?,
     onTest: () -> Unit,
+    testing: Boolean,
 ) {
     SectionCard {
         Row(
@@ -2600,6 +3346,7 @@ private fun KeylessProviderCard(
             StatusPill(
                 text = providerStatus(configured = true, active = true, health = health),
                 color = providerStatusColor(configured = true, active = true, health = health),
+                modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
         }
         Spacer(modifier = Modifier.height(12.dp))
@@ -2611,12 +3358,21 @@ private fun KeylessProviderCard(
         Spacer(modifier = Modifier.height(10.dp))
         OutlinedButton(
             onClick = onTest,
+            enabled = !testing,
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 48.dp),
+                    .heightIn(min = 48.dp)
+                    .semantics {
+                        if (testing) liveRegion = LiveRegionMode.Polite
+                    },
         ) {
-            Text(stringResource(R.string.test_provider_read_only))
+            Text(
+                stringResource(
+                    if (testing) R.string.provider_test_in_progress else R.string.test_provider_read_only,
+                    "Kraken",
+                ),
+            )
         }
     }
 }
@@ -2626,6 +3382,7 @@ private fun CandidateCard(
     candidate: TokenCandidateEntity,
     onClick: () -> Unit,
 ) {
+    val displayName = candidateDisplayName(candidate.symbol, candidate.name, stringResource(R.string.unknown_token))
     SectionCard {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -2633,7 +3390,8 @@ private fun CandidateCard(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = candidate.symbol ?: candidate.name ?: stringResource(R.string.unknown_token),
+                    text = displayName,
+                    modifier = Modifier.semantics { heading() },
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -2652,8 +3410,8 @@ private fun CandidateCard(
             }
             IconButton(onClick = onClick) {
                 Icon(
-                    imageVector = Icons.Outlined.ChevronRight,
-                    contentDescription = stringResource(R.string.view_candidate_details),
+                    imageVector = Icons.AutoMirrored.Outlined.KeyboardArrowRight,
+                    contentDescription = stringResource(R.string.view_candidate_details_for, displayName),
                 )
             }
         }
@@ -2676,9 +3434,14 @@ private fun CandidateDialog(
 ) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(candidate.symbol ?: candidate.name ?: stringResource(R.string.unknown_token)) },
+        title = {
+            Text(candidateDisplayName(candidate.symbol, candidate.name, stringResource(R.string.unknown_token)))
+        },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
                 AddressText(candidate.mint, abbreviated = false)
                 MetricRow(stringResource(R.string.candidate_state), candidate.state.replace('_', ' '))
                 MetricRow(
@@ -2707,6 +3470,12 @@ private fun CandidateDialog(
     )
 }
 
+internal fun candidateDisplayName(
+    symbol: String?,
+    name: String?,
+    unknownToken: String,
+): String = symbol?.takeIf { it.isNotBlank() } ?: name?.takeIf { it.isNotBlank() } ?: unknownToken
+
 @Composable
 private fun EventCard(event: AppEventEntity) {
     SectionCard {
@@ -2717,15 +3486,16 @@ private fun EventCard(event: AppEventEntity) {
         ) {
             Text(
                 text = event.category.replace('_', ' '),
+                modifier = Modifier.semantics { heading() },
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
             )
             StatusPill(
-                text = event.severity,
+                text = eventSeverityLabel(event.severity),
                 color =
                     when (event.severity) {
                         "ERROR", "CRITICAL" -> StartExRed
-                        "WARNING" -> StartExAmber
+                        "WARN", "WARNING" -> StartExAmber
                         else -> MaterialTheme.colorScheme.secondary
                     },
             )
@@ -2746,11 +3516,27 @@ private fun EventCard(event: AppEventEntity) {
 }
 
 @Composable
+private fun eventSeverityLabel(severity: String): String =
+    when (severity) {
+        "CRITICAL" -> stringResource(R.string.severity_critical)
+        "ERROR" -> stringResource(R.string.severity_error)
+        "WARN", "WARNING" -> stringResource(R.string.severity_warning)
+        "INFO" -> stringResource(R.string.severity_information)
+        else -> severity.replace('_', ' ')
+    }
+
+@Composable
 private fun PreflightRow(
     label: String,
     ready: Boolean,
+    actionRequiredReason: String,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+    ) {
         Row(
             modifier =
                 Modifier
@@ -2768,14 +3554,23 @@ private fun PreflightRow(
                 modifier =
                     Modifier
                         .weight(1f)
-                        .padding(horizontal = 12.dp),
+                        .padding(start = 12.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
+        }
+        Text(
+            text = stringResource(if (ready) R.string.status_ready else R.string.preflight_status_blocking),
+            color = if (ready) StartExGreen else StartExAmber,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 36.dp, bottom = if (ready) 8.dp else 0.dp),
+        )
+        if (!ready) {
             Text(
-                text = stringResource(if (ready) R.string.status_ready else R.string.status_action_required),
-                color = if (ready) StartExGreen else StartExAmber,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
+                text = actionRequiredReason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 36.dp, top = 4.dp, bottom = 8.dp),
             )
         }
         HorizontalDivider(color = StartExOutline)
@@ -2784,7 +3579,12 @@ private fun PreflightRow(
 
 @Composable
 private fun PreflightNotRequiredRow(label: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .semantics(mergeDescendants = true) {},
+    ) {
         Row(
             modifier =
                 Modifier
@@ -2802,15 +3602,16 @@ private fun PreflightNotRequiredRow(label: String) {
                 modifier =
                     Modifier
                         .weight(1f)
-                        .padding(horizontal = 12.dp),
+                        .padding(start = 12.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Text(
-                text = stringResource(R.string.not_required_paper),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.labelMedium,
-            )
         }
+        Text(
+            text = stringResource(R.string.preflight_status_optional),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.labelMedium,
+            modifier = Modifier.padding(start = 36.dp, bottom = 8.dp),
+        )
         HorizontalDivider(color = StartExOutline)
     }
 }
@@ -2818,7 +3619,12 @@ private fun PreflightNotRequiredRow(label: String) {
 @Composable
 // CPD-OFF
 private fun PreflightReadyToConnectRow(label: String) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .semantics(mergeDescendants = true) { liveRegion = LiveRegionMode.Polite },
+    ) {
         Row(
             modifier =
                 Modifier
@@ -2836,21 +3642,22 @@ private fun PreflightReadyToConnectRow(label: String) {
                 modifier =
                     Modifier
                         .weight(1f)
-                        .padding(horizontal = 12.dp),
+                        .padding(start = 12.dp),
                 style = MaterialTheme.typography.bodyMedium,
             )
-            Text(
-                text = stringResource(R.string.provider_ready_to_connect),
-                color = StartExAmber,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
         }
+        Text(
+            text = stringResource(R.string.preflight_status_start_time_check),
+            color = StartExAmber,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(start = 36.dp),
+        )
         Text(
             text = stringResource(R.string.pump_health_checked_on_start),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.padding(bottom = 8.dp, start = 36.dp),
+            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp, start = 36.dp),
         )
         HorizontalDivider(color = StartExOutline)
     }
@@ -2887,7 +3694,10 @@ private fun providerStatus(
         !configured -> stringResource(R.string.provider_not_configured)
         !active -> stringResource(R.string.provider_inactive)
         health?.state == "HEALTHY" -> stringResource(R.string.provider_healthy)
+        health?.state == "STALE" -> stringResource(R.string.provider_stale)
         health?.state == "RATE_LIMITED" -> stringResource(R.string.provider_rate_limited)
+        health?.state == "UNAVAILABLE" -> stringResource(R.string.notification_provider_unavailable_title)
+        health?.state == "DEGRADED" -> stringResource(R.string.status_action_required)
         health?.state == "OFFLINE" -> stringResource(R.string.health_offline)
         else -> stringResource(R.string.provider_check_pending)
     }
@@ -2901,7 +3711,7 @@ private fun providerStatusColor(
     !configured -> MaterialTheme.colorScheme.onSurfaceVariant
     !active -> StartExRed
     health?.state == "HEALTHY" -> StartExGreen
-    health?.state == "OFFLINE" -> StartExRed
+    health?.state == "UNAVAILABLE" || health?.state == "OFFLINE" -> StartExRed
     else -> StartExAmber
 }
 
@@ -2914,48 +3724,77 @@ private fun providerDescription(provider: ProviderId): Int =
     }
 
 @Composable
-private fun balanceText(state: PersistedAppState): String {
-    val lamports = state.walletBalanceLamports ?: return stringResource(R.string.balance_unavailable)
-    val sol =
-        BigDecimal
-            .valueOf(lamports)
-            .divide(BigDecimal.valueOf(LAMPORTS_PER_SOL), SOL_DISPLAY_DECIMALS, RoundingMode.DOWN)
-            .stripTrailingZeros()
-            .toPlainString()
-    return stringResource(R.string.sol_balance_value, sol)
+private fun balanceText(walletBalanceLamports: Long?): String {
+    val lamports = walletBalanceLamports ?: return stringResource(R.string.balance_unavailable)
+    return stringResource(R.string.sol_balance_value, formatSol(lamports))
 }
 
 @Composable
-private fun balanceSummary(state: PersistedAppState): String {
-    val sol = balanceText(state)
-    val eur = state.walletBalanceEur ?: return sol
-    return "$sol · ${eurBalanceText(eur)}"
+private fun balanceSummary(
+    walletBalanceLamports: Long?,
+    walletBalanceEur: BigDecimal?,
+): String {
+    val sol = balanceText(walletBalanceLamports)
+    val eur = walletBalanceEur ?: return sol
+    return stringResource(R.string.balance_summary, sol, eurBalanceText(eur))
 }
 
 @Composable
 private fun eurBalanceText(value: BigDecimal): String =
     stringResource(
         R.string.eur_balance_value,
-        value.setScale(EUR_DISPLAY_DECIMALS, RoundingMode.HALF_UP).toPlainString(),
+        formatUserNumber(
+            value = value.setScale(EUR_DISPLAY_DECIMALS, RoundingMode.HALF_UP),
+            maximumFractionDigits = EUR_DISPLAY_DECIMALS,
+            locale = LocalConfiguration.current.locales[0],
+        ),
     )
 
-private fun formatSol(lamports: Long): String =
-    BigDecimal
-        .valueOf(lamports)
-        .divide(BigDecimal.valueOf(LAMPORTS_PER_SOL), SOL_DISPLAY_DECIMALS, RoundingMode.DOWN)
-        .stripTrailingZeros()
-        .toPlainString()
+@Composable
+private fun marketAgeText(seconds: Long): String {
+    val (resource, value) =
+        when {
+            seconds < 60 -> R.plurals.market_age_seconds to seconds
+            seconds < 3_600 -> R.plurals.market_age_minutes to seconds / 60
+            else -> R.plurals.market_age_hours to seconds / 3_600
+        }
+    return pluralStringResource(resource, if (value == 1L) 1 else 2, value)
+}
 
+@Composable
+private fun formatSol(lamports: Long): String =
+    formatUserNumber(
+        value =
+            BigDecimal
+                .valueOf(lamports)
+                .divide(BigDecimal.valueOf(LAMPORTS_PER_SOL), SOL_DISPLAY_DECIMALS, RoundingMode.DOWN)
+                .stripTrailingZeros(),
+        maximumFractionDigits = SOL_DISPLAY_DECIMALS,
+        locale = LocalConfiguration.current.locales[0],
+    )
+
+@Composable
 private fun formatSignedSol(lamports: Long): String = formatAtomicSol(BigInteger.valueOf(lamports), signed = true)
 
+@Composable
 private fun formatAtomicSol(
     lamports: BigInteger,
     signed: Boolean,
 ): String {
-    val value = BigDecimal(lamports, SOL_DISPLAY_DECIMALS).stripTrailingZeros().toPlainString()
-    val prefix = if (signed && lamports.signum() > 0) "+" else ""
-    return "$prefix$value SOL"
+    val value =
+        formatUserNumber(
+            value = BigDecimal(lamports, SOL_DISPLAY_DECIMALS).stripTrailingZeros(),
+            maximumFractionDigits = SOL_DISPLAY_DECIMALS,
+            locale = LocalConfiguration.current.locales[0],
+        )
+    return stringResource(
+        if (signed && lamports.signum() > 0) R.string.positive_sol_value else R.string.sol_balance_value,
+        value,
+    )
 }
+
+@Composable
+private fun formattedTimestamp(timestampMillis: Long): String = formatUserTimestamp(timestampMillis, LocalConfiguration.current.locales[0])
 
 private const val HISTORY_DISPLAY_LIMIT = 250
 private const val WALLET_DATA_DISPLAY_LIMIT = 10

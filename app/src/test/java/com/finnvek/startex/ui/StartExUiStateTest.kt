@@ -6,6 +6,7 @@ import com.finnvek.startex.data.local.ProviderHealthEntity
 import com.finnvek.startex.data.local.isFreshHealthy
 import com.finnvek.startex.network.ProviderId
 import com.finnvek.startex.ui.components.abbreviateAddress
+import com.finnvek.startex.ui.screens.walletHoldingsForDisplay
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -117,6 +118,18 @@ class StartExUiStateTest {
     }
 
     @Test
+    fun walletHoldingsDisplayIsCappedAtTenAndKeepsToken2022Visible() {
+        val standard = (1..12).map { holding("standard-$it", STANDARD_TOKEN_PROGRAM_ID) }
+        val token2022 = (1..3).map { holding("token-2022-$it", TOKEN_2022_PROGRAM_ID) }
+
+        val displayed = walletHoldingsForDisplay(standard + token2022)
+
+        assertEquals(10, displayed.size)
+        assertEquals(9, displayed.count { !it.isToken2022 })
+        assertEquals(1, displayed.count(WalletTokenHolding::isToken2022))
+    }
+
+    @Test
     fun staleRunningSessionIsNeverPresentedAsRunning() {
         val session =
             BotSessionEntity(
@@ -157,5 +170,20 @@ class StartExUiStateTest {
         assertFalse(health.isFreshHealthy(nowMillis = 1_101, maximumAgeMillis = 100))
         assertFalse(health.copy(lastSuccessAtMillis = 1_101).isFreshHealthy(1_100, 100))
         assertFalse(health.copy(state = "OFFLINE").isFreshHealthy(1_100, 100))
+    }
+
+    private fun holding(
+        mint: String,
+        tokenProgram: String,
+    ) = WalletTokenHolding(
+        mint = mint,
+        tokenProgram = tokenProgram,
+        amountAtomic = BigInteger.ONE,
+        decimals = 0,
+    )
+
+    private companion object {
+        const val STANDARD_TOKEN_PROGRAM_ID = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        const val TOKEN_2022_PROGRAM_ID = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
     }
 }

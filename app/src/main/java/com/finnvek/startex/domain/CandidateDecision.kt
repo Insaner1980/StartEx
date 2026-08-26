@@ -95,7 +95,7 @@ object CandidateStateMachine {
         return to
     }
 
-    private fun <K, V> Map<K, Set<V>>.orEmpty(key: K): Set<V> = get(key).orEmpty()
+    private fun <K, V> Map<K, Set<V>>.orEmpty(key: K): Set<V> = this[key].orEmpty()
 }
 
 enum class TokenProgram {
@@ -334,7 +334,7 @@ data class DecisionResult(
     val strategyVersion: String,
 )
 
-interface DecisionEngine {
+fun interface DecisionEngine {
     fun evaluate(
         snapshot: CandidateSnapshot,
         factors: Map<ScoreFactor, BigDecimal>,

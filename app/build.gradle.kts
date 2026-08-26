@@ -65,6 +65,7 @@ android {
 
     buildTypes {
         debug {
+            enableUnitTestCoverage = true
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
             buildConfigField("boolean", "LIVE_TRADING_BUILD_ENABLED", "false")

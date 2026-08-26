@@ -6,6 +6,7 @@ import com.finnvek.startex.bootstrap.DefaultConfiguration
 import com.finnvek.startex.data.local.BotSessionEntity
 import com.finnvek.startex.data.local.DecisionEntity
 import com.finnvek.startex.data.local.PositionEntity
+import com.finnvek.startex.data.local.ProviderCredentialEntity
 import com.finnvek.startex.data.local.ProviderHealthEntity
 import com.finnvek.startex.data.local.StartExDatabase
 import com.finnvek.startex.data.local.TokenCandidateEntity
@@ -16,6 +17,9 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -70,6 +74,69 @@ class StartExRepositoryPersistenceBoundaryTest {
         }
 
     @Test
+    fun `stop after close is accepted once and cannot revive a stopped session`() =
+        runBlocking {
+            repository.saveConfig(
+                DefaultConfiguration.strategy(createdAtMillis = 1),
+                DefaultConfiguration.risk(createdAtMillis = 1),
+            )
+            repository.saveSession(session())
+
+            assertTrue(repository.requestStopAfterClose("session", nowMillis = 10))
+            assertFalse(repository.requestStopAfterClose("session", nowMillis = 11))
+            assertEquals("PROTECTING", database.botSessionDao().byId("session")?.status)
+
+            repository.updateSessionStatus(
+                id = "session",
+                status = "STOPPED",
+                stoppedAtMillis = 12,
+                stopReason = "USER_REQUESTED",
+                lastHeartbeatAtMillis = 12,
+            )
+
+            assertFalse(repository.requestStopAfterClose("session", nowMillis = 13))
+            assertEquals("STOPPED", database.botSessionDao().byId("session")?.status)
+            assertEquals("USER_REQUESTED", database.botSessionDao().byId("session")?.stopReason)
+        }
+
+    @Test
+    fun `authenticated stop updates only its original active session`() =
+        runBlocking {
+            repository.saveConfig(
+                DefaultConfiguration.strategy(createdAtMillis = 1),
+                DefaultConfiguration.risk(createdAtMillis = 1),
+            )
+            repository.saveSession(session().copy(status = "NEEDS_ATTENTION"))
+            repository.saveSession(
+                session().copy(
+                    id = "replacement",
+                    status = "NEEDS_ATTENTION",
+                    startedAtMillis = 2,
+                ),
+            )
+
+            val stopped =
+                repository.stopSession(
+                    id = "session",
+                    activeStates = listOf("RUNNING", "PAUSED", "PROTECTING", "NEEDS_ATTENTION"),
+                    stoppedAtMillis = 10,
+                    stopReason = "USER_REQUESTED",
+                )
+
+            assertEquals("session", stopped?.id)
+            assertEquals("STOPPED", database.botSessionDao().byId("session")?.status)
+            assertEquals("NEEDS_ATTENTION", database.botSessionDao().byId("replacement")?.status)
+            assertNull(
+                repository.stopSession(
+                    id = "session",
+                    activeStates = listOf("RUNNING", "PAUSED", "PROTECTING", "NEEDS_ATTENTION"),
+                    stoppedAtMillis = 11,
+                    stopReason = "USER_REQUESTED",
+                ),
+            )
+        }
+
+    @Test
     fun `provider health read modify writes are serialized`() =
         runBlocking {
             val start = CompletableDeferred<Unit>()
@@ -96,6 +163,38 @@ class StartExRepositoryPersistenceBoundaryTest {
             }
 
             assertEquals(20, repository.providerHealth().single().consecutiveFailures)
+        }
+
+    @Test
+    fun `saving a provider credential atomically invalidates earlier health`() =
+        runBlocking {
+            repository.updateProviderHealth("HELIUS") {
+                ProviderHealthEntity(
+                    provider = "HELIUS",
+                    state = "HEALTHY",
+                    consecutiveFailures = 0,
+                    lastSuccessAtMillis = 1,
+                    lastFailureAtMillis = null,
+                    latencyMillis = 10,
+                    retryAfterMillis = null,
+                    lastFailureCode = null,
+                    updatedAtMillis = 1,
+                )
+            }
+
+            repository.saveProviderCredential(
+                ProviderCredentialEntity(
+                    providerId = "HELIUS",
+                    encryptedApiKey = byteArrayOf(1),
+                    apiKeyIv = byteArrayOf(2),
+                    secretEnvelopeVersion = 1,
+                    keystoreAccessMode = "UNATTENDED",
+                    updatedAtMillis = 2,
+                ),
+            )
+
+            assertTrue(repository.providerHealth().isEmpty())
+            assertEquals(2L, repository.providerCredential("HELIUS")?.updatedAtMillis)
         }
 
     private fun session() =

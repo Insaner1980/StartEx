@@ -1,6 +1,7 @@
 package com.finnvek.startex.ui
 
 import androidx.annotation.StringRes
+import androidx.compose.runtime.Immutable
 import com.finnvek.startex.data.local.AppEventEntity
 import com.finnvek.startex.data.local.DailyPerformanceEntity
 import com.finnvek.startex.data.local.PositionEntity
@@ -174,12 +175,15 @@ enum class AuthenticationPurpose {
     SellNow,
     EmergencyExit,
     RecoverMonitoring,
+    StopMonitoring,
 }
 
 sealed interface StartExUiEvent {
     data class Authenticate(
         val purpose: AuthenticationPurpose,
         val operation: PreparedCipherOperation? = null,
+        val demoModeGeneration: Long = 0,
+        val walletSetupGeneration: Long? = null,
     ) : StartExUiEvent
 
     data object StartMonitoringService : StartExUiEvent
@@ -188,7 +192,13 @@ sealed interface StartExUiEvent {
 
     data object ResumeMonitoringService : StartExUiEvent
 
-    data object RecoverMonitoringService : StartExUiEvent
+    data class RecoverMonitoringService(
+        val sessionId: String,
+    ) : StartExUiEvent
+
+    data class StopAuthenticatedMonitoringService(
+        val sessionId: String,
+    ) : StartExUiEvent
 
     data object StopMonitoringService : StartExUiEvent
 
@@ -256,6 +266,88 @@ data class PersistedAppState(
     val configurationEditingAllowed: Boolean
         get() = loaded && activeSessionId == null && monitorState == MonitorState.Stopped
 }
+
+@Immutable
+data class HomeScreenState(
+    val demoMode: Boolean,
+    val mode: TradingMode,
+    val walletAddress: String?,
+    val walletBalanceLamports: Long?,
+    val walletBalanceEur: BigDecimal?,
+    val walletBalanceLoading: Boolean,
+    @param:StringRes val walletBalanceError: Int?,
+    val dailyPerformance: List<DailyPerformanceEntity>,
+    val monitorState: MonitorState,
+    val openPositions: List<PositionEntity>,
+    val risk: RiskConfigEntity?,
+)
+
+@Immutable
+data class WalletScreenState(
+    val demoMode: Boolean,
+    val walletAddress: String?,
+    val walletUnlocked: Boolean,
+    val walletBalanceLamports: Long?,
+    val walletBalanceEur: BigDecimal?,
+    val walletBalanceSlot: Long?,
+    val walletBalanceLoading: Boolean,
+    @param:StringRes val walletBalanceError: Int?,
+    val tokenHoldings: List<WalletTokenHolding>,
+    val tokenHoldingsSlot: Long?,
+    val recentWalletActivity: List<WalletActivity>,
+    val walletDataLoading: Boolean,
+    @param:StringRes val walletDataError: Int?,
+    val walletDataUpdatedAtMillis: Long?,
+    val walletDataStale: Boolean,
+    val trustedAddresses: List<TrustedAddressEntity>,
+)
+
+@Immutable
+data class HistoryScreenState(
+    val demoMode: Boolean,
+    val tradeHistory: List<TradeExportRow>,
+)
+
+fun PersistedAppState.homeScreenState() =
+    HomeScreenState(
+        demoMode = demoMode,
+        mode = mode,
+        walletAddress = walletAddress,
+        walletBalanceLamports = walletBalanceLamports,
+        walletBalanceEur = walletBalanceEur,
+        walletBalanceLoading = walletBalanceLoading,
+        walletBalanceError = walletBalanceError,
+        dailyPerformance = dailyPerformance,
+        monitorState = monitorState,
+        openPositions = openPositions,
+        risk = risk,
+    )
+
+fun PersistedAppState.walletScreenState() =
+    WalletScreenState(
+        demoMode = demoMode,
+        walletAddress = walletAddress,
+        walletUnlocked = walletUnlocked,
+        walletBalanceLamports = walletBalanceLamports,
+        walletBalanceEur = walletBalanceEur,
+        walletBalanceSlot = walletBalanceSlot,
+        walletBalanceLoading = walletBalanceLoading,
+        walletBalanceError = walletBalanceError,
+        tokenHoldings = tokenHoldings,
+        tokenHoldingsSlot = tokenHoldingsSlot,
+        recentWalletActivity = recentWalletActivity,
+        walletDataLoading = walletDataLoading,
+        walletDataError = walletDataError,
+        walletDataUpdatedAtMillis = walletDataUpdatedAtMillis,
+        walletDataStale = walletDataStale,
+        trustedAddresses = trustedAddresses,
+    )
+
+fun PersistedAppState.historyScreenState() =
+    HistoryScreenState(
+        demoMode = demoMode,
+        tradeHistory = tradeHistory,
+    )
 
 sealed interface ConfigurationSaveState {
     data object Idle : ConfigurationSaveState

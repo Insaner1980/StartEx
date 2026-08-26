@@ -139,8 +139,8 @@ class ProviderHealthTracker(
 fun interface RequestGate {
     suspend fun awaitTurn()
 
-    data object None : RequestGate {
-        override suspend fun awaitTurn() = Unit
+    companion object {
+        val None: RequestGate = RequestGate { }
     }
 }
 

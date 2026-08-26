@@ -13,13 +13,15 @@ import okhttp3.Request
 import java.io.IOException
 import java.math.BigDecimal
 
+private const val CANDLE_TIME_FIELD = "candle.time"
+
 data class FiatRate(
     val eurPerSol: BigDecimal,
     val observedAtMillis: Long,
     val source: String,
 )
 
-interface FiatRateProvider {
+fun interface FiatRateProvider {
     suspend fun solEurRate(): ProviderResult<FiatRate>
 }
 
@@ -63,7 +65,7 @@ class KrakenFiatRateProvider(
 
     private fun enforceFreshness(rate: FiatRate): ProviderResult<FiatRate> {
         val age = clock() - rate.observedAtMillis
-        if (age < 0) return invalidResponse("candle.time")
+        if (age < 0) return invalidResponse(CANDLE_TIME_FIELD)
         return if (age > maximumAgeMillis) {
             ProviderResult.Failure(ProviderError.StaleData(ProviderId.KRAKEN, age))
         } else {
@@ -96,9 +98,9 @@ private object KrakenFiatJson {
                     .singleOrNull()
                     ?: invalidFiat("result.pair")
             val candle = candleSeries.lastOrNull()?.jsonArray ?: invalidFiat("candle")
-            val observedAtSeconds = candle.longAt(0, "candle.time")
+            val observedAtSeconds = candle.longAt(0, CANDLE_TIME_FIELD)
             val close = candle.decimalAt(4, "candle.close")
-            if (observedAtSeconds <= 0) invalidFiat("candle.time")
+            if (observedAtSeconds <= 0) invalidFiat(CANDLE_TIME_FIELD)
             if (close.signum() <= 0) invalidFiat("candle.close")
             ProviderResult.Success(
                 FiatRate(

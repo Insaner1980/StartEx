@@ -3,6 +3,7 @@ package com.finnvek.startex.ui.components
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
@@ -26,15 +28,20 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.finnvek.startex.ui.theme.StartExOutline
@@ -48,7 +55,7 @@ fun StatusPill(
     modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = modifier.semantics { stateDescription = text },
+        modifier = modifier,
         color = color.copy(alpha = 0.13f),
         contentColor = color,
         shape = RoundedCornerShape(100),
@@ -57,10 +64,9 @@ fun StatusPill(
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-            fontSize = 11.sp,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.7.sp,
-            maxLines = 1,
         )
     }
 }
@@ -92,6 +98,7 @@ fun SectionHeading(
     Column(modifier = modifier) {
         Text(
             text = title,
+            modifier = Modifier.semantics { heading() },
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.SemiBold,
         )
@@ -118,20 +125,28 @@ fun MetricRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            text = label,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Box(
             modifier = Modifier.weight(1f),
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = valueColor,
-            fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.End,
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Box(
             modifier = Modifier.weight(1f),
-        )
+            contentAlignment = Alignment.CenterEnd,
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodyMedium,
+                color = valueColor,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.End,
+            )
+        }
     }
 }
 
@@ -184,21 +199,44 @@ fun SettingsRow(
     modifier: Modifier = Modifier,
     supportingText: String? = null,
     onClick: (() -> Unit)? = null,
+    enabled: Boolean = true,
+    disabledReason: String? = null,
+    toggleState: Boolean? = null,
+    focusRequester: FocusRequester? = null,
     trailing: @Composable RowScope.() -> Unit = {},
 ) {
     val clickModifier =
-        if (onClick == null) {
-            Modifier
-        } else {
-            Modifier.clickable(role = Role.Button, onClick = onClick)
+        when {
+            onClick == null -> {
+                Modifier
+            }
+
+            toggleState != null -> {
+                Modifier.toggleable(
+                    value = toggleState,
+                    enabled = enabled,
+                    role = Role.Switch,
+                    onValueChange = { onClick() },
+                )
+            }
+
+            else -> {
+                Modifier.clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            }
         }
     Column(modifier = modifier.fillMaxWidth()) {
         Row(
             modifier =
-                clickModifier
+                (focusRequester?.let { Modifier.focusRequester(it) } ?: Modifier)
+                    .then(clickModifier)
                     .fillMaxWidth()
                     .heightIn(min = 56.dp)
-                    .padding(vertical = 10.dp),
+                    .padding(vertical = 10.dp)
+                    .semantics {
+                        if (!enabled && disabledReason != null) {
+                            stateDescription = disabledReason
+                        }
+                    },
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
@@ -257,6 +295,7 @@ fun ScreenHeader(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = title,
+                modifier = Modifier.semantics { heading() },
                 style = MaterialTheme.typography.headlineSmall,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onBackground,
@@ -281,11 +320,14 @@ fun AddressText(
 ) {
     Text(
         text = if (abbreviated) abbreviateAddress(address) else address,
-        modifier = modifier,
-        style = MaterialTheme.typography.bodyMedium,
+        modifier =
+            if (abbreviated) {
+                modifier.clearAndSetSemantics { contentDescription = address }
+            } else {
+                modifier
+            },
+        style = MaterialTheme.typography.bodyMedium.copy(textDirection = TextDirection.Ltr),
         fontFamily = FontFamily.Monospace,
-        maxLines = if (abbreviated) 1 else 4,
-        overflow = TextOverflow.Ellipsis,
     )
 }
 
