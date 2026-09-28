@@ -75,7 +75,7 @@ There is no StartEx server, account system, configured Firebase product, cloud d
 - Gradle wrapper: 9.7.0, with a pinned distribution SHA-256, 10-second wrapper network timeout, zero wrapper retries, and URL validation.
 - Android Gradle Plugin: 9.3.1.
 - Kotlin: 2.2.10 with the Compose and serialization plugins.
-- KSP: 2.3.11.
+- KSP: 2.3.12.
 - Repositories are centralized in `settings.gradle.kts`; project repositories are rejected.
 - Repository sources are Google Maven, Maven Central, and the Gradle Plugin Portal where appropriate.
 - Gradle JVM heap is 4 GiB and parallel execution is enabled. The build cache is deliberately disabled because Kotlin versions before 2.4.20 are affected by CVE-2026-53914; the checked-in Kotlin version remains 2.2.10.
@@ -100,11 +100,11 @@ There is no StartEx server, account system, configured Firebase product, cloud d
 
 | Concern | Library and version |
 | --- | --- |
-| Android core | AndroidX Core KTX 1.19.0 |
+| Android core | AndroidX Core KTX 1.19.1 |
 | Activity / Compose host | Activity Compose 1.13.0 |
 | Lifecycle | Lifecycle runtime/viewmodel Compose 2.11.0 |
 | Compose | BOM 2026.06.01, UI, Foundation, Material 3, extended icons, tooling preview |
-| Persistence | Room 2.8.4, DataStore 1.2.1 |
+| Persistence | Room 2.8.5, DataStore 1.2.1 |
 | Authentication | AndroidX Biometric 1.1.0 |
 | HTTP and WebSocket | OkHttp 5.4.0 |
 | JSON | Kotlinx Serialization 1.11.0 |
@@ -123,11 +123,11 @@ There is no StartEx server, account system, configured Firebase product, cloud d
 | JUnit | 4.13.2 |
 | AndroidX JUnit | 1.3.0 |
 | Espresso | 3.7.0 |
-| Robolectric | 4.16.1 |
+| Robolectric | 4.17 |
 | Roborazzi Compose | 1.71.0 |
 | ktlint Gradle plugin | 14.2.0, running ktlint 1.8.0 |
 | detekt | 1.23.8, `maxIssues: 0` |
-| Compose rules for ktlint / detekt | 0.6.4 / 0.4.23 |
+| Compose rules for ktlint / detekt | 0.6.7 / 0.4.23 |
 | OWASP Dependency-Check | 13.0.0; scans debug and release runtime classpaths |
 | Android security lint rules | 1.0.4, attached through `lintChecks` |
 
@@ -170,7 +170,7 @@ These rules can affect application, test, plugin, scanner, and other tooling gra
 | `config/semgrep/startex-security.yml` | Project rules for unsafe WebView interfaces/file access and cleartext traffic. |
 | `config/dependency-check/suppressions.xml` | Evidence-bearing Dependency-Check false-positive and build-cache-CVE suppressions. |
 | `tools/*.ps1` | Thin PowerShell entry points into `C:\Dev\Android-check\tools\InvokeProjectCheck.ps1`; the shared engine is not copied into this repository. |
-| `.deepsec` | pnpm workspace for DeepSec 2.3.4 scan, AI processing/revalidation, and Markdown export. |
+| `.deepsec` | pnpm workspace for DeepSec 2.3.10 scan, AI processing/revalidation, and Markdown export. |
 | `.editorconfig` | Kotlin/Compose formatting behavior. |
 | `app/build.gradle.kts` | Android variants, feature locks, quality tools, Room schema output, and dependencies. |
 | `app/proguard-rules.pro` | Project R8/ProGuard rules layered on the optimized Android default for release builds. |
@@ -1131,7 +1131,7 @@ The project config gives the shared engine one required Android application modu
 
 `config/check-exceptions.json` currently contains eight narrowly selected MobSF exceptions. Each has a rule, scope, reason, owner, source selector, finding path, tracking identifier, and expiry. All currently expire on 2026-10-31, so a later scan must revalidate or remove them rather than silently treating them as permanent suppressions.
 
-The `.deepsec` workspace pins DeepSec 2.3.4 and exposes scan, AI-processing, high-severity revalidation, and Markdown export scripts. Its process/revalidation commands explicitly select the Codex agent and `gpt-5.6-luna`; therefore a raw DeepSec scan and the processed or revalidated report are distinct stages. The workspace also forces affected Undici 8.x versions below 8.9.0 to 8.10.0 and disables build scripts for `@google/genai` and `protobufjs`.
+The `.deepsec` workspace pins DeepSec 2.3.10 and exposes scan, AI-processing, high-severity revalidation, and Markdown export scripts. Its process/revalidation commands explicitly select the Codex agent and `gpt-5.6-luna`; therefore a raw DeepSec scan and the processed or revalidated report are distinct stages. The workspace also forces affected Undici 8.x versions below 8.9.0 to 8.11.2, pins Hono to 4.13.9, fast-uri >=3.0.0 <3.1.6 to 3.1.8, and qs >=6.14.2 <6.16.0 to 6.16.0 and disables build scripts for `@google/genai` and `protobufjs`.
 
 ### GitHub Actions
 
