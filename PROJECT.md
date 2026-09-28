@@ -75,7 +75,7 @@ There is no StartEx server, account system, configured Firebase product, cloud d
 - Gradle wrapper: 9.7.0, with a pinned distribution SHA-256, 10-second wrapper network timeout, zero wrapper retries, and URL validation.
 - Android Gradle Plugin: 9.3.1.
 - Kotlin: 2.2.10 with the Compose and serialization plugins.
-- KSP: 2.3.11.
+- KSP: 2.3.12.
 - Repositories are centralized in `settings.gradle.kts`; project repositories are rejected.
 - Repository sources are Google Maven, Maven Central, and the Gradle Plugin Portal where appropriate.
 - Gradle JVM heap is 4 GiB and parallel execution is enabled. The build cache is deliberately disabled because Kotlin versions before 2.4.20 are affected by CVE-2026-53914; the checked-in Kotlin version remains 2.2.10.
@@ -100,11 +100,11 @@ There is no StartEx server, account system, configured Firebase product, cloud d
 
 | Concern | Library and version |
 | --- | --- |
-| Android core | AndroidX Core KTX 1.19.0 |
+| Android core | AndroidX Core KTX 1.19.1 |
 | Activity / Compose host | Activity Compose 1.13.0 |
 | Lifecycle | Lifecycle runtime/viewmodel Compose 2.11.0 |
 | Compose | BOM 2026.06.01, UI, Foundation, Material 3, extended icons, tooling preview |
-| Persistence | Room 2.8.4, DataStore 1.2.1 |
+| Persistence | Room 2.8.5, DataStore 1.2.1 |
 | Authentication | AndroidX Biometric 1.1.0 |
 | HTTP and WebSocket | OkHttp 5.4.0 |
 | JSON | Kotlinx Serialization 1.11.0 |
