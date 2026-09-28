@@ -123,11 +123,11 @@ There is no StartEx server, account system, configured Firebase product, cloud d
 | JUnit | 4.13.2 |
 | AndroidX JUnit | 1.3.0 |
 | Espresso | 3.7.0 |
-| Robolectric | 4.16.1 |
+| Robolectric | 4.17 |
 | Roborazzi Compose | 1.71.0 |
 | ktlint Gradle plugin | 14.2.0, running ktlint 1.8.0 |
 | detekt | 1.23.8, `maxIssues: 0` |
-| Compose rules for ktlint / detekt | 0.6.4 / 0.4.23 |
+| Compose rules for ktlint / detekt | 0.6.7 / 0.4.23 |
 | OWASP Dependency-Check | 13.0.0; scans debug and release runtime classpaths |
 | Android security lint rules | 1.0.4, attached through `lintChecks` |
 
