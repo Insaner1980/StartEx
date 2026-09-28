@@ -3,15 +3,15 @@ agp = "9.3.2"
 # Kotlin 2.4 requires a separate compiler-warning migration.
 #noinspection NewerVersionAvailable
 kotlin = "2.2.21"
-ksp = "2.3.11"
+ksp = "2.3.12"
 # Kotlin 2.2 compatibility; newer analyzer versions require Kotlin 2.3 or 2.4.
 #noinspection NewerVersionAvailable
 composeStabilityAnalyzer = "0.6.4"
 composeBom = "2026.08.00"
-core = "1.19.0"
+core = "1.19.1"
 activity = "1.13.0"
 lifecycle = "2.11.0"
-room = "2.8.4"
+room = "2.8.5"
 datastore = "1.2.1"
 biometric = "1.1.0"
 okhttp = "5.5.0"
@@ -32,13 +32,13 @@ detekt = "1.23.8"
 # Detekt 1.x compatibility; 0.6.x requires Detekt 2 alpha.
 #noinspection NewerVersionAvailable
 composeRulesDetekt = "0.4.23"
-composeRulesKtlint = "0.6.4"
+composeRulesKtlint = "0.6.7"
 desugarJdkLibs = "2.1.5"
 owaspDependencyCheck = "13.0.0"
 androidSecurityLints = "1.0.4"
-roborazzi = "1.73.0"
-robolectric = "4.16.1"
-sonarqube = "7.4.0.8496"
+roborazzi = "1.75.0"
+robolectric = "4.17"
+sonarqube = "7.5.0.8588"
 
 [libraries]
 androidx-core-ktx = { module = "androidx.core:core-ktx", version.ref = "core" }
