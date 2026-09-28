@@ -170,7 +170,7 @@ These rules can affect application, test, plugin, scanner, and other tooling gra
 | `config/semgrep/startex-security.yml` | Project rules for unsafe WebView interfaces/file access and cleartext traffic. |
 | `config/dependency-check/suppressions.xml` | Evidence-bearing Dependency-Check false-positive and build-cache-CVE suppressions. |
 | `tools/*.ps1` | Thin PowerShell entry points into `C:\Dev\Android-check\tools\InvokeProjectCheck.ps1`; the shared engine is not copied into this repository. |
-| `.deepsec` | pnpm workspace for DeepSec 2.3.4 scan, AI processing/revalidation, and Markdown export. |
+| `.deepsec` | pnpm workspace for DeepSec 2.3.10 scan, AI processing/revalidation, and Markdown export. |
 | `.editorconfig` | Kotlin/Compose formatting behavior. |
 | `app/build.gradle.kts` | Android variants, feature locks, quality tools, Room schema output, and dependencies. |
 | `app/proguard-rules.pro` | Project R8/ProGuard rules layered on the optimized Android default for release builds. |
@@ -1131,7 +1131,7 @@ The project config gives the shared engine one required Android application modu
 
 `config/check-exceptions.json` currently contains eight narrowly selected MobSF exceptions. Each has a rule, scope, reason, owner, source selector, finding path, tracking identifier, and expiry. All currently expire on 2026-10-31, so a later scan must revalidate or remove them rather than silently treating them as permanent suppressions.
 
-The `.deepsec` workspace pins DeepSec 2.3.4 and exposes scan, AI-processing, high-severity revalidation, and Markdown export scripts. Its process/revalidation commands explicitly select the Codex agent and `gpt-5.6-luna`; therefore a raw DeepSec scan and the processed or revalidated report are distinct stages. The workspace also forces affected Undici 8.x versions below 8.9.0 to 8.10.0 and disables build scripts for `@google/genai` and `protobufjs`.
+The `.deepsec` workspace pins DeepSec 2.3.10 and exposes scan, AI-processing, high-severity revalidation, and Markdown export scripts. Its process/revalidation commands explicitly select the Codex agent and `gpt-5.6-luna`; therefore a raw DeepSec scan and the processed or revalidated report are distinct stages. The workspace also forces affected Undici 8.x versions below 8.9.0 to 8.11.2, pins Hono to 4.13.9, fast-uri >=3.0.0 <3.1.6 to 3.1.8, and qs >=6.14.2 <6.16.0 to 6.16.0 and disables build scripts for `@google/genai` and `protobufjs`.
 
 ### GitHub Actions
 
